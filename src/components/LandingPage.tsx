@@ -37,18 +37,10 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
       <section className="relative overflow-hidden bg-gradient-to-b from-white to-gray-50">
         <div className="max-w-7xl mx-auto px-6 pt-16 pb-24 lg:pt-24 lg:pb-32 grid lg:grid-cols-12 gap-12 items-center">
           <div className="lg:col-span-6 relative z-10">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="inline-flex items-center gap-2 bg-[#D52B1E]/5 text-[#D52B1E] text-xs font-bold tracking-widest uppercase rounded-full px-3 py-1.5 mb-6"
-            >
-              <Sparkles className="w-3 h-3" /> Combo Multi · Exclusivo online
-            </motion.div>
-
             <motion.h1
               initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.1 }}
-              className="text-[44px] sm:text-6xl lg:text-7xl font-black text-black leading-[1.02] tracking-tight mb-6"
+              className="text-[44px] sm:text-6xl lg:text-7xl font-bold text-black leading-[1.02] tracking-tight mb-6"
             >
               Internet, TV e Celular
               <span className="block text-[#D52B1E]">num plano só.</span>
@@ -371,7 +363,7 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <p className="text-xs text-gray-400">Bem-vindo</p>
-                  <p className="text-sm font-bold text-black">Rodrigo Ferreira</p>
+                  <p className="text-sm font-bold text-black">Rodolfo Sanches</p>
                 </div>
                 <div className="w-9 h-9 rounded-full bg-[#D52B1E]/10 flex items-center justify-center">
                   <div className="w-2 h-2 rounded-full bg-[#D52B1E]" />

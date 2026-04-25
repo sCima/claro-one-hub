@@ -1,13 +1,13 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
-import { motion } from 'framer-motion';
 import {
-  LayoutDashboard, Smartphone, Wifi, Tv, Phone, FileText,
-  Gift, Headphones, Settings, ArrowUpRight,
+  LayoutDashboard, FileText, Smartphone, Wifi, Tv, Phone,
+  Gift, Headphones, Settings, X, ArrowUpRight,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+
+const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
 
 export type SectionId =
   | 'overview' | 'mobile' | 'internet' | 'tv' | 'voice'
@@ -15,7 +15,7 @@ export type SectionId =
 
 interface NavItem { id: SectionId; icon: LucideIcon; label: string; badge?: string }
 
-const NAV: { group: string; items: NavItem[] }[] = [
+const sections: { group: string; items: NavItem[] }[] = [
   {
     group: 'Geral',
     items: [
@@ -35,9 +35,9 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Benefícios',
     items: [
-      { id: 'clube',    icon: Gift,       label: 'Claro Clube' },
-      { id: 'support',  icon: Headphones, label: 'Suporte'      },
-      { id: 'settings', icon: Settings,   label: 'Configurações'},
+      { id: 'clube',    icon: Gift,       label: 'Claro Clube'   },
+      { id: 'support',  icon: Headphones, label: 'Suporte'       },
+      { id: 'settings', icon: Settings,   label: 'Configurações' },
     ],
   },
 ];
@@ -45,25 +45,44 @@ const NAV: { group: string; items: NavItem[] }[] = [
 interface Props {
   active: SectionId;
   onChange: (id: SectionId) => void;
+  onOpenTour: () => void;
+  mobile?: boolean;
+  onClose?: () => void;
 }
 
-export function HubSidebar({ active, onChange }: Props) {
+export function HubSidebar({ active, onChange, onOpenTour, mobile = false, onClose }: Props) {
   return (
-    <motion.aside
-      initial={{ x: -40, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="hidden lg:flex fixed left-0 top-0 bottom-0 w-64 bg-white border-r border-gray-100 flex-col z-40"
+    <aside
+      className={cx(
+        'bg-white dark:bg-warm-800 border-r border-warm-200/70 dark:border-warm-700 flex flex-col',
+        mobile
+          ? 'fixed inset-y-0 left-0 w-72 z-50 anim-in'
+          : 'hidden lg:flex fixed left-0 top-0 bottom-0 w-64 z-40',
+      )}
     >
-      <Link href="/" className="px-7 h-20 flex items-center gap-3 border-b border-gray-100">
-        <Image src="/logo.png" alt="Claro" width={70} height={28} className="h-7 w-auto" priority />
-        <span className="text-[10px] font-bold tracking-[0.25em] uppercase text-gray-400">One Hub</span>
-      </Link>
+      {/* Header */}
+      <div className="px-5 h-20 flex items-center gap-3 border-b border-warm-200/70 dark:border-warm-700">
+        <div className="flex-1 min-w-0">
+          <Image
+            src="/logo-onehub.png"
+            alt="Claro One Hub"
+            width={140}
+            height={36}
+            className="h-9 w-auto object-contain object-left dark:brightness-0 dark:invert"
+          />
+        </div>
+        {mobile && (
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-warm-100 dark:hover:bg-warm-700 cursor-pointer">
+            <X size={18} />
+          </button>
+        )}
+      </div>
 
-      <nav className="flex-1 overflow-y-auto py-6 px-4">
-        {NAV.map((section) => (
-          <div key={section.group} className="mb-7">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 mb-2">
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto py-5 px-3" data-tour="sidebar">
+        {sections.map((section) => (
+          <div key={section.group} className="mb-6">
+            <p className="text-[10px] font-bold text-warm-400 uppercase tracking-[0.22em] px-3 mb-2">
               {section.group}
             </p>
             <div className="flex flex-col gap-0.5">
@@ -73,25 +92,22 @@ export function HubSidebar({ active, onChange }: Props) {
                   <button
                     key={id}
                     onClick={() => onChange(id)}
-                    className={`group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all relative
-                      ${isActive
-                        ? 'bg-black text-white'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-black'
-                      }`}
+                    className={cx(
+                      'relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
+                      isActive
+                        ? 'bg-warm-900 text-white dark:bg-warm-50 dark:text-warm-900'
+                        : 'text-warm-600 dark:text-warm-300 hover:bg-warm-100 dark:hover:bg-warm-700 hover:text-warm-900 dark:hover:text-warm-50',
+                    )}
                   >
-                    <Icon className="w-4 h-4 shrink-0" strokeWidth={1.8} />
+                    <Icon size={16} strokeWidth={1.8} className="shrink-0" />
                     <span className="flex-1 text-left">{label}</span>
                     {badge && (
-                      <span className={`text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center
-                        ${isActive ? 'bg-[#D52B1E] text-white' : 'bg-[#D52B1E] text-white'}`}>
+                      <span className="text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center bg-claro text-white">
                         {badge}
                       </span>
                     )}
                     {isActive && (
-                      <motion.span
-                        layoutId="active-pill-dot"
-                        className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#D52B1E] rounded-r"
-                      />
+                      <span className="absolute -left-[3px] top-1/2 -translate-y-1/2 w-1 h-6 bg-claro rounded-r" />
                     )}
                   </button>
                 );
@@ -101,18 +117,19 @@ export function HubSidebar({ active, onChange }: Props) {
         ))}
       </nav>
 
-      <div className="p-4 border-t border-gray-100">
-        <Link
-          href="/"
-          className="group flex items-center justify-between bg-gradient-to-br from-[#D52B1E] to-[#9A1F16] text-white rounded-2xl p-4"
+      {/* Tour CTA */}
+      <div className="p-3 border-t border-warm-200/70 dark:border-warm-700">
+        <button
+          onClick={onOpenTour}
+          className="w-full flex items-center justify-between bg-gradient-to-br from-claro to-claro-dark text-white rounded-2xl p-4 hover:brightness-110 transition"
         >
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-1">Site Claro</p>
-            <p className="text-sm font-bold">Explorar planos</p>
+          <div className="text-left">
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] opacity-70 mb-1">Novidade</p>
+            <p className="text-sm font-bold">Tour guiado do Hub</p>
           </div>
-          <ArrowUpRight className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-        </Link>
+          <ArrowUpRight size={18} />
+        </button>
       </div>
-    </motion.aside>
+    </aside>
   );
 }

@@ -1,15 +1,9 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import {
-  CreditCard, Smartphone, Gift, TrendingUp, ChevronRight,
-  type LucideIcon,
-} from 'lucide-react';
+import { CreditCard, Smartphone, Gift, TrendingUp, TrendingDown, type LucideIcon } from 'lucide-react';
 import type { Activity } from '../../../data/mockData';
 
-const ICONS: Record<string, LucideIcon> = {
-  CreditCard, Smartphone, Gift, TrendingUp,
-};
+const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
 
 const fmtDate = (iso: string) => {
   const [, m, d] = iso.split('-');
@@ -17,23 +11,32 @@ const fmtDate = (iso: string) => {
   return `${d} ${months[+m - 1]}`;
 };
 
-export function ActivityFeed({ items }: { items: Activity[] }) {
+const ICONS: Record<string, LucideIcon> = {
+  CreditCard,
+  Smartphone,
+  Gift,
+  TrendingUp,
+  TrendingDown,
+};
+
+interface Props {
+  items: Activity[];
+}
+
+export function ActivityFeed({ items }: Props) {
   return (
-    <section className="bg-white border border-gray-100 rounded-3xl p-7">
+    <section className="bg-white dark:bg-warm-800 border border-warm-200/70 dark:border-warm-700 rounded-3xl p-7">
       <header className="flex items-end justify-between mb-5">
         <div>
-          <p className="text-[10px] font-bold text-[#D52B1E] uppercase tracking-widest mb-1">
+          <p className="text-[10px] font-bold text-claro uppercase tracking-[0.22em] mb-1">
             Últimas movimentações
           </p>
-          <h3 className="text-2xl font-black text-black tracking-tight">Atividade</h3>
+          <h3 className="text-2xl font-black tracking-tight">Atividade</h3>
         </div>
-        <button className="text-xs font-bold text-gray-500 hover:text-black transition-colors flex items-center gap-1">
-          Histórico <ChevronRight className="w-3.5 h-3.5" />
-        </button>
       </header>
 
       <ul className="space-y-1">
-        {items.map((a, i) => {
+        {items.map((a) => {
           const Icon = ICONS[a.icon] ?? CreditCard;
           const positive = a.amount > 0;
           const isPoints = a.unit === 'pts';
@@ -42,25 +45,26 @@ export function ActivityFeed({ items }: { items: Activity[] }) {
             : `${positive ? '+' : '−'} R$ ${Math.abs(a.amount).toFixed(2).replace('.', ',')}`;
 
           return (
-            <motion.li
+            <li
               key={a.id}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="flex items-center gap-4 py-3 border-b border-gray-50 last:border-0"
+              className="flex items-center gap-4 py-3 border-b border-warm-100 dark:border-warm-700 last:border-0"
             >
-              <div className="w-9 h-9 rounded-xl bg-gray-50 flex items-center justify-center shrink-0">
-                <Icon className="w-4 h-4 text-gray-700" strokeWidth={1.7} />
+              <div className="w-9 h-9 rounded-xl bg-warm-100 dark:bg-warm-700 flex items-center justify-center shrink-0">
+                <Icon size={16} className="text-warm-700 dark:text-warm-300" strokeWidth={1.7} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-black truncate">{a.label}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">{fmtDate(a.date)} · {a.type}</p>
+                <p className="text-sm font-bold truncate">{a.label}</p>
+                <p className="text-[10px] text-warm-400 mt-0.5">{fmtDate(a.date)} · {a.type}</p>
               </div>
-              <span className={`text-sm font-black tabular-nums shrink-0
-                ${positive ? 'text-green-600' : isPoints ? 'text-yellow-700' : 'text-black'}`}>
+              <span
+                className={cx(
+                  'text-sm font-black tabular-nums shrink-0',
+                  positive ? 'text-green-600' : isPoints ? 'text-amber-700' : 'text-warm-900 dark:text-warm-50',
+                )}
+              >
                 {fmt}
               </span>
-            </motion.li>
+            </li>
           );
         })}
       </ul>

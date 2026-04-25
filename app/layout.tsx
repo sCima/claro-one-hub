@@ -5,6 +5,9 @@ import { ClaroProvider } from '@/src/context/ClaroContext';
 export const metadata: Metadata = {
   title: 'Claro One Hub',
   description: 'Ecossistema unificado Claro · Challenge 2026',
+  icons: {
+    icon: '/favicon.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

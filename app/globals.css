@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ─── Tema: paleta warm + Claro brand ─── */
+/* ── Tema: paleta warm + Claro brand ── */
 @theme {
   /* Warm neutrals (tinted gray) */
   --color-warm-50:  #FAF9F7;

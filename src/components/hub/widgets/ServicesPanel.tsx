@@ -1,6 +1,6 @@
 'use client';
 
-import { Smartphone, Wifi, Tv, Phone, ChevronRight, type LucideIcon } from 'lucide-react';
+import { Smartphone, Wifi, Tv, Phone, ChevronRight, Plus, type LucideIcon } from 'lucide-react';
 import type { Service } from '../../../data/mockData';
 import type { SectionId } from '../HubSidebar';
 
@@ -23,9 +23,10 @@ const ROUTE_MAP: Record<Service['type'], SectionId> = {
 interface Props {
   services: Service[];
   onOpen: (page: SectionId) => void;
+  onAddPlan?: () => void;
 }
 
-export function ServicesPanel({ services, onOpen }: Props) {
+export function ServicesPanel({ services, onOpen, onAddPlan }: Props) {
   return (
     <section data-tour="services">
       <header className="flex items-end justify-between mb-5 gap-4">
@@ -35,9 +36,14 @@ export function ServicesPanel({ services, onOpen }: Props) {
             {services.length} ativos no combo
           </h2>
         </div>
-        <button className="text-xs font-bold text-warm-500 hover:text-warm-900 dark:hover:text-warm-50 flex items-center gap-1">
-          Gerenciar <ChevronRight size={14} />
-        </button>
+        {onAddPlan && (
+          <button
+            onClick={onAddPlan}
+            className="inline-flex items-center gap-1.5 text-xs font-bold rounded-full px-4 py-2 bg-claro text-white hover:bg-claro-dark transition-colors"
+          >
+            <Plus size={14} /> Adicionar plano
+          </button>
+        )}
       </header>
 
       <div className="grid sm:grid-cols-2 gap-3">

@@ -162,7 +162,7 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
                   </div>
                   <div>
                     <p className="text-[10px] text-gray-400 font-medium">Plano Controle</p>
-                    <p className="text-xs font-bold">Claro Móvel · 50GB</p>
+                    <p className="text-xs font-bold">Claro Celular · 50GB</p>
                   </div>
                 </div>
                 <span className="text-[10px] font-bold bg-green-100 text-green-700 rounded-full px-2 py-0.5">5G+</span>

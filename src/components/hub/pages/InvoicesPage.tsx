@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Download } from 'lucide-react';
+import { Check, Download, Eye } from 'lucide-react';
 import type { Invoice } from '../../../data/mockData';
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
@@ -15,9 +15,10 @@ const fmtFullDate = (iso: string) => {
 interface Props {
   invoices: Invoice[];
   onPay: (invoice: Invoice) => void;
+  onShowDetails?: (invoice: Invoice) => void;
 }
 
-export function InvoicesPage({ invoices, onPay }: Props) {
+export function InvoicesPage({ invoices, onPay, onShowDetails }: Props) {
   const [filter, setFilter] = useState('Todas');
 
   const totalPaid = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0);
@@ -111,6 +112,16 @@ export function InvoicesPage({ invoices, onPay }: Props) {
                         className="inline-flex items-center justify-center gap-2 font-bold rounded-full transition-colors text-xs px-4 py-2 bg-claro text-white hover:bg-claro-dark"
                       >
                         Pagar
+                      </button>
+                    )}
+                    {onShowDetails && (
+                      <button
+                        onClick={() => onShowDetails(inv)}
+                        className="w-8 h-8 rounded-full hover:bg-warm-100 dark:hover:bg-warm-700 flex items-center justify-center"
+                        aria-label="Ver detalhes"
+                        title="Ver detalhes"
+                      >
+                        <Eye size={14} />
                       </button>
                     )}
                     <button

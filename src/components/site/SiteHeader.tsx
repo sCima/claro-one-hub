@@ -18,6 +18,15 @@ export function SiteHeader({ onAccessHub }: { onAccessHub: () => void }) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  /* Suave: cancela navegação default e usa scrollIntoView */
+  const smoothScrollTo = (id: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    setMobileOpen(false);
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else window.history.pushState(null, '', `#${id}`);
+  };
+
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-gray-100">
       <TopBar />
@@ -74,12 +83,20 @@ export function SiteHeader({ onAccessHub }: { onAccessHub: () => void }) {
             </div>
           ))}
 
-          <Link href="#combos" className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-[#D52B1E] transition-colors">
+          <a
+            href="#combos"
+            onClick={smoothScrollTo('combos')}
+            className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-[#D52B1E] transition-colors cursor-pointer"
+          >
             Combos
-          </Link>
-          <Link href="#lojas" className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-[#D52B1E] transition-colors">
-            Lojas
-          </Link>
+          </a>
+          <a
+            href="#servicos"
+            onClick={smoothScrollTo('servicos')}
+            className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-[#D52B1E] transition-colors cursor-pointer"
+          >
+            Serviços
+          </a>
         </nav>
 
         <div className="hidden md:flex items-center gap-3">

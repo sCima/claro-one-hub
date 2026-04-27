@@ -16,9 +16,10 @@ interface Props {
   invoice: Invoice | null;
   totalServices: number;
   onPay: () => void;
+  onShowDetails?: () => void;
 }
 
-export function HeroBill({ invoice, totalServices, onPay }: Props) {
+export function HeroBill({ invoice, totalServices, onPay, onShowDetails }: Props) {
   if (!invoice) {
     return (
       <div className="bg-warm-900 dark:bg-warm-800 text-white rounded-3xl p-8 lg:p-10 anim-in flex items-center justify-center">
@@ -92,7 +93,10 @@ export function HeroBill({ invoice, totalServices, onPay }: Props) {
             <button className="flex items-center justify-center gap-1.5 border border-white/15 hover:bg-white/10 rounded-full py-2.5 text-xs font-medium">
               <Download size={14} /> PDF
             </button>
-            <button className="flex items-center justify-center gap-1.5 border border-white/15 hover:bg-white/10 rounded-full py-2.5 text-xs font-medium">
+            <button
+              onClick={onShowDetails}
+              className="flex items-center justify-center gap-1.5 border border-white/15 hover:bg-white/10 rounded-full py-2.5 text-xs font-medium"
+            >
               <BarChart3 size={14} /> Detalhes
             </button>
           </div>

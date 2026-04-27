@@ -21,8 +21,12 @@ import { SettingsPage } from './hub/pages/SettingsPage';
 import { PayModal } from './hub/overlays/PayModal';
 import { RedeemAnimation } from './hub/overlays/RedeemAnimation';
 import { TourOverlay } from './hub/overlays/TourOverlay';
+import { BillDetailsModal } from './hub/overlays/BillDetailsModal';
+import { AddPlanModal } from './hub/overlays/AddPlanModal';
+import { ClaraChat, ClaraFAB } from './hub/overlays/ClaraChat';
+import { useClaroContext } from '../context/ClaroContext';
 import { useClaroData } from '../hooks/useClaroData';
-import type { Invoice, ClubeReward, ServiceDetailKey } from '../data/mockData';
+import type { Invoice, ClubeReward, ServiceDetailKey, AvailablePlan } from '../data/mockData';
 
 // ─── Toast system ────────────────────────────────────────────────────────────
 type Toast = { id: string; msg: string; tone: 'success' | 'warn' | 'info' };
@@ -90,14 +94,21 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [payInv, setPayInv]         = useState<Invoice | null>(null);
   const [redeem, setRedeem]         = useState<ClubeReward | null>(null);
   const [tourOpen, setTourOpen]     = useState(false);
+  const [detailsInv, setDetailsInv] = useState<Invoice | null>(null);
+  const [addPlanOpen, setAddPlanOpen] = useState<{ preselect?: string | null } | null>(null);
+  const [claraOpen, setClaraOpen]   = useState(false);
+  const [claraPrefill, setClaraPrefill] = useState<string | null>(null);
 
   const { toasts, push, dismiss } = useToasts();
+
+  const { addPlanToCombo, activeUser } = useClaroContext();
 
   const {
     user, services, invoices, dataHistory, clube, activity, recommendations, loading,
     confirmPayment, confirmRedeem,
   } = useClaroData();
 
+  const displayUser = activeUser ?? user;
   const pendingInvoice = invoices.find((i) => i.status === 'pending') ?? invoices[0] ?? null;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -131,6 +142,24 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     setActive(page);
     setMobileNav(false);
   };
+
+  const handleShowBillDetails = (inv?: Invoice) => {
+    setDetailsInv(inv ?? pendingInvoice);
+  };
+
+  const handleAddPlan = (preselect?: string | null) => {
+    setAddPlanOpen({ preselect });
+  };
+
+  const handleAddPlanConfirm = (plan: AvailablePlan) => {
+    addPlanToCombo(plan);
+    push(`${plan.brand} adicionado ao combo`, 'success');
+  };
+
+  const handleAskClara = (q: string) => {
+    setClaraPrefill(q);
+    setClaraOpen(true);
+  };
   // ──────────────────────────────────────────────────────────────────────────
 
   // ── Page content ──────────────────────────────────────────────────────────
@@ -144,12 +173,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             invoice={pendingInvoice}
             totalServices={services.length}
             onPay={() => handlePay()}
+            onShowDetails={() => handleShowBillDetails(pendingInvoice)}
           />
         )}
         <QuickActions onNav={handleNav} onPay={() => handlePay()} />
         <div className="grid lg:grid-cols-12 gap-6">
           <div className="lg:col-span-7 space-y-6">
-            <ServicesPanel services={services} onOpen={handleNav} />
+            <ServicesPanel services={services} onOpen={handleNav} onAddPlan={() => handleAddPlan()} />
             <UsageInsights data={dataHistory} />
           </div>
           <div className="lg:col-span-5 space-y-6">
@@ -158,11 +188,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
         <UpgradeCTA />
-        <Recommendations items={recommendations} />
+        <Recommendations items={recommendations} onAdd={(slug) => handleAddPlan(slug)} />
       </div>
     );
   } else if (active === 'invoices') {
-    mainContent = <InvoicesPage invoices={invoices} onPay={handlePay} />;
+    mainContent = <InvoicesPage invoices={invoices} onPay={handlePay} onShowDetails={handleShowBillDetails} />;
   } else if (active === 'clube' && clube) {
     mainContent = <ClubePage clube={clube} onRedeem={handleRedeem} />;
   } else if (active === 'support') {
@@ -212,6 +242,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         <HubTopBar
           onLogout={handleLogout}
           onOpenMobileNav={() => setMobileNav(true)}
+          onNavigate={handleNav}
+          onAskClara={handleAskClara}
         />
 
         {bannerOpen && (
@@ -228,9 +260,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 month: 'long',
               })}
             </p>
-            {active === 'overview' && !loading && user && (
+            {active === 'overview' && !loading && displayUser && (
               <h1 className="text-3xl lg:text-4xl font-black tracking-tight">
-                Olá, {user.name.split(' ')[0]}
+                Olá, {displayUser.name.split(' ')[0]}
               </h1>
             )}
           </div>
@@ -253,10 +285,36 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         onClose={() => setPayInv(null)}
         onConfirm={handlePayConfirm}
       />
+      <BillDetailsModal
+        open={!!detailsInv}
+        invoice={detailsInv}
+        services={services}
+        onClose={() => setDetailsInv(null)}
+        onPay={handlePay}
+      />
+      <AddPlanModal
+        open={!!addPlanOpen}
+        preselectId={addPlanOpen?.preselect ?? null}
+        onClose={() => setAddPlanOpen(null)}
+        onConfirm={handleAddPlanConfirm}
+      />
       {redeem && (
         <RedeemAnimation reward={redeem} onDone={() => setRedeem(null)} />
       )}
       <TourOverlay open={tourOpen} onClose={() => setTourOpen(false)} />
+
+      {/* ── Clara IA ── */}
+      <ClaraFAB hidden={claraOpen || tourOpen} onClick={() => setClaraOpen(true)} />
+      <ClaraChat
+        open={claraOpen}
+        onClose={() => setClaraOpen(false)}
+        userName={displayUser?.name}
+        services={services}
+        invoices={invoices}
+        clube={clube}
+        prefill={claraPrefill}
+        onPrefillConsumed={() => setClaraPrefill(null)}
+      />
 
       {/* ── Toasts ── */}
       <ToastHost toasts={toasts} onDismiss={dismiss} />

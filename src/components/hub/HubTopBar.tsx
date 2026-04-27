@@ -2,22 +2,29 @@
 
 import { useState, useRef, useEffect } from 'react';
 import {
-  Menu, Search, Sun, Moon, Bell, ChevronDown, Plus, LogOut,
+  Menu, Search, Sun, Moon, Bell, ChevronDown, Plus, LogOut, X,
 } from 'lucide-react';
 import { useClaroContext } from '../../context/ClaroContext';
+import { SearchResults } from './widgets/SearchResults';
+import type { SectionId } from './HubSidebar';
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
 
 interface Props {
   onLogout: () => void;
   onOpenMobileNav: () => void;
+  onNavigate: (page: SectionId) => void;
+  onAskClara: (q: string) => void;
 }
 
-export function HubTopBar({ onLogout, onOpenMobileNav }: Props) {
+export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }: Props) {
   const {
-    user, accounts, notifications, dark,
+    activeUser, user, accounts, notifications, dark,
+    services, invoices, clube,
     searchQuery, switchAccount, toggleDark, setSearchQuery,
   } = useClaroContext();
+  const profile = activeUser ?? user;
+  const [searchFocus, setSearchFocus] = useState(false);
 
   const [notifOpen,   setNotifOpen]   = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -34,6 +41,7 @@ export function HubTopBar({ onLogout, onOpenMobileNav }: Props) {
         setNotifOpen(false);
         setProfileOpen(false);
         setAcctOpen(false);
+        setSearchFocus(false);
       }
     };
     document.addEventListener('mousedown', onClick);
@@ -109,20 +117,48 @@ export function HubTopBar({ onLogout, onOpenMobileNav }: Props) {
       </div>
 
       {/* Search */}
-      <div
-        className="hidden md:flex items-center gap-2 flex-1 max-w-md bg-warm-100 dark:bg-warm-700 hover:bg-warm-200/70 transition-colors rounded-full pl-4 pr-3 py-2.5 focus-within:ring-2 focus-within:ring-claro/40"
-        data-tour="search"
-      >
-        <Search size={14} className="text-warm-400" />
-        <input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Buscar serviços, faturas, recompensas..."
-          className="bg-transparent flex-1 text-sm placeholder:text-warm-400 outline-none"
-        />
-        <kbd className="hidden sm:inline-block text-[10px] font-mono bg-white dark:bg-warm-800 border border-warm-200 dark:border-warm-600 text-warm-400 rounded px-1.5 py-0.5">
-          ⌘ K
-        </kbd>
+      <div className="relative hidden md:flex flex-1 max-w-md" data-tour="search">
+        <div
+          className={cx(
+            'flex items-center gap-2 w-full transition-colors rounded-full pl-4 pr-3 py-2.5',
+            searchFocus
+              ? 'bg-white dark:bg-warm-700 ring-2 ring-claro/40'
+              : 'bg-warm-100 dark:bg-warm-700 hover:bg-warm-200/70'
+          )}
+        >
+          <Search size={14} className="text-warm-400" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setSearchFocus(true)}
+            placeholder="Buscar serviços, faturas, recompensas..."
+            className="bg-transparent flex-1 text-sm placeholder:text-warm-400 outline-none"
+          />
+          {searchQuery ? (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-warm-400 hover:text-warm-700 dark:hover:text-warm-100"
+              aria-label="Limpar busca"
+            >
+              <X size={14} />
+            </button>
+          ) : (
+            <kbd className="hidden sm:inline-block text-[10px] font-mono bg-white dark:bg-warm-800 border border-warm-200 dark:border-warm-600 text-warm-400 rounded px-1.5 py-0.5">
+              ⌘ K
+            </kbd>
+          )}
+        </div>
+        {searchFocus && (
+          <SearchResults
+            query={searchQuery}
+            services={services}
+            invoices={invoices}
+            clube={clube}
+            onNavigate={(p) => { onNavigate(p); setSearchQuery(''); setSearchFocus(false); }}
+            onClose={() => { setSearchFocus(false); }}
+            onAskClara={(q) => { onAskClara(q); setSearchQuery(''); setSearchFocus(false); }}
+          />
+        )}
       </div>
 
       <div className="flex-1 md:flex-none" />
@@ -199,7 +235,7 @@ export function HubTopBar({ onLogout, onOpenMobileNav }: Props) {
           className="flex items-center gap-2 p-1.5 rounded-full hover:bg-warm-100 dark:hover:bg-warm-700"
         >
           <div className="w-8 h-8 rounded-full bg-warm-200 dark:bg-warm-600 text-warm-700 dark:text-warm-100 flex items-center justify-center text-[10px] font-black">
-            {user?.initials ?? 'U'}
+            {profile?.initials ?? 'U'}
           </div>
           <ChevronDown size={14} className="text-warm-400 hidden sm:block" />
         </button>
@@ -207,11 +243,11 @@ export function HubTopBar({ onLogout, onOpenMobileNav }: Props) {
         {profileOpen && (
           <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-warm-800 border border-warm-200/70 dark:border-warm-700 rounded-2xl shadow-2xl overflow-hidden anim-in">
             <div className="px-5 py-4 border-b border-warm-100 dark:border-warm-700">
-              <p className="text-sm font-bold">{user?.name}</p>
-              <p className="text-[11px] text-warm-500 mt-0.5">{user?.email}</p>
+              <p className="text-sm font-bold">{profile?.name}</p>
+              <p className="text-[11px] text-warm-500 mt-0.5">{profile?.email}</p>
               <div className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 rounded-full px-2.5 py-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                Cliente {user?.tier}
+                Cliente {profile?.tier}
               </div>
             </div>
             <button

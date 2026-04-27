@@ -13,9 +13,10 @@ const ICON_COMPONENTS: Record<string, LucideIcon> = {
 
 interface Props {
   items: Recommendation[];
+  onAdd?: (slug: string) => void;
 }
 
-export function Recommendations({ items }: Props) {
+export function Recommendations({ items, onAdd }: Props) {
   return (
     <section>
       <header className="flex items-end justify-between mb-5">
@@ -31,10 +32,10 @@ export function Recommendations({ items }: Props) {
         {items.map((r) => {
           const I = ICON_COMPONENTS[r.icon] ?? Tv;
           return (
-            <a
+            <button
               key={r.slug}
-              href="#"
-              className="group relative block bg-white dark:bg-warm-800 border border-warm-200/70 dark:border-warm-700 hover:border-claro rounded-2xl p-5 transition-colors h-full"
+              onClick={() => onAdd?.(r.slug)}
+              className="group relative text-left bg-white dark:bg-warm-800 border border-warm-200/70 dark:border-warm-700 hover:border-claro rounded-2xl p-5 transition-colors h-full"
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="w-11 h-11 rounded-xl bg-warm-100 dark:bg-warm-700 flex items-center justify-center group-hover:bg-claro transition-colors">
@@ -49,13 +50,18 @@ export function Recommendations({ items }: Props) {
               <p className="text-sm font-black mb-1">{r.brand}</p>
               <p className="text-[11px] text-warm-500 leading-snug mb-4">{r.reason}</p>
 
-              <div className="flex items-baseline gap-1 pt-3 border-t border-warm-100 dark:border-warm-700">
-                <span className="text-[10px] text-warm-400">a partir de</span>
-                <span className="text-sm font-black tabular-nums">
-                  R$ {r.priceFrom.toFixed(2).replace('.', ',')}
+              <div className="flex items-center justify-between pt-3 border-t border-warm-100 dark:border-warm-700">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-[10px] text-warm-400">a partir de</span>
+                  <span className="text-sm font-black tabular-nums">
+                    R$ {r.priceFrom.toFixed(2).replace('.', ',')}
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold text-claro group-hover:underline">
+                  Adicionar →
                 </span>
               </div>
-            </a>
+            </button>
           );
         })}
       </div>

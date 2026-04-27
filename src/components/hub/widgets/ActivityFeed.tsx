@@ -1,6 +1,6 @@
 'use client';
 
-import { CreditCard, Smartphone, Gift, TrendingUp, TrendingDown, type LucideIcon } from 'lucide-react';
+import { CreditCard, Smartphone, Gift, TrendingUp, TrendingDown, Plus, type LucideIcon } from 'lucide-react';
 import type { Activity } from '../../../data/mockData';
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
@@ -17,6 +17,7 @@ const ICONS: Record<string, LucideIcon> = {
   Gift,
   TrendingUp,
   TrendingDown,
+  Plus,
 };
 
 interface Props {

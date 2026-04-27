@@ -3,30 +3,12 @@
 import { useState } from 'react';
 import { MessageCircle, MessageSquare, Phone, ShoppingBag, ChevronDown } from 'lucide-react';
 import { useClaroContext } from '../../../context/ClaroContext';
+import { faqs } from '../../../data/mockData';
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
 
 const CHANNEL_ICONS = { MessageCircle, MessageSquare, Phone, ShoppingBag } as const;
 type ChannelIconName = keyof typeof CHANNEL_ICONS;
-
-const faqs = [
-  {
-    q: 'Como pagar com Pix em 1 toque?',
-    a: 'Vá em Faturas, toque em "Pagar agora" e escolha Pix. O QR é gerado para o titular do CPF cadastrado.',
-  },
-  {
-    q: 'Posso compartilhar dados com dependentes?',
-    a: 'Sim — adicione cada dependente ao combo Multi e ative compartilhamento de dados em Configurações > Dependentes.',
-  },
-  {
-    q: 'Onde vejo o status da minha região?',
-    a: 'O banner amarelo no topo do hub mostra incidentes ativos. Você também pode consultar status.claro.com.br.',
-  },
-  {
-    q: 'Como cancelar um serviço?',
-    a: 'Em Meus serviços > Detalhes do serviço > Gerenciar plano > Cancelar. Atendimento humano em 5 min.',
-  },
-];
 
 export function SupportPage() {
   const { supportChannels } = useClaroContext();

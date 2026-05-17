@@ -138,6 +138,312 @@ export const mockSupportChannels = [
   { id: 'SUP-004', label: 'Loja Virtual', icon: 'ShoppingBag',   available: true, wait: null,       number: null    },
 ];
 
+/* ─── Clara · Intents (Sprint 2 §3.4) ───────────────────────────────────────
+ * Cada intent declara os padrões de reconhecimento (regex) e se a Clara
+ * consegue resolver sozinha (resolvedAuto) ou precisa de handover humano. */
+export const claraIntents = [
+  {
+    id: 'consultar_fatura',
+    resolvedAuto: true,
+    patterns: /(fatura|valor da conta|minha conta|quanto.*deve|quanto.*pagar|vencimento|conta de \w+)/,
+    examples: ['Qual o valor da minha fatura?', 'Me mostra a conta de abril'],
+  },
+  {
+    id: 'segunda_via_fatura',
+    resolvedAuto: true,
+    patterns: /(2.?\s?via|segunda via|boleto|me manda.*conta|reenvi|c.pia da fatura)/,
+    examples: ['Preciso da 2ª via', 'Me manda o boleto'],
+  },
+  {
+    id: 'consultar_plano',
+    resolvedAuto: true,
+    patterns: /(meu plano|qual.*plano|o que.*incluso|o que tenho|meus servi.os|combo)/,
+    examples: ['Qual meu plano?', 'O que está incluso?'],
+  },
+  {
+    id: 'alterar_plano',
+    resolvedAuto: true,
+    patterns: /(trocar.*plano|mudar.*plano|upgrade|fazer upgrade|adicionar plano|contratar|migrar)/,
+    examples: ['Quero trocar de plano', 'Tem upgrade disponível?'],
+  },
+  {
+    id: 'status_servico',
+    resolvedAuto: true,
+    patterns: /(caiu|n.o (pega|funciona|t. funcionando)|sem (sinal|internet|conex.o)|lenta|instabil|problema.*(internet|tv|sinal)|fora do ar)/,
+    examples: ['Minha internet caiu', 'A TV não pega'],
+  },
+  {
+    id: 'solicitar_atendente',
+    resolvedAuto: false,
+    patterns: /(falar com (algu.m|atendente|humano|pessoa)|atendente|humano|reclama|n.o resolveu|quero suporte)/,
+    examples: ['Quero falar com alguém', 'Atendente humano'],
+  },
+  {
+    id: 'saudacao',
+    resolvedAuto: true,
+    patterns: /^(oi|ol.|hey|hello|bom dia|boa tarde|boa noite|e a.|tudo bem)/,
+    examples: ['Oi', 'Bom dia'],
+  },
+  {
+    id: 'despedida',
+    resolvedAuto: true,
+    patterns: /(tchau|obrigad|valeu|brigad|at. mais|flw|thanks)/,
+    examples: ['Tchau', 'Obrigado'],
+  },
+] as const;
+
+export type ClaraIntentId = typeof claraIntents[number]['id'] | 'fora_de_escopo';
+
+/* ─── One Hub Admin · ITSM / Service Desk (Sprint 2 §4.4) ─────────────────── */
+export type AdminChannel  = 'whatsapp' | 'portal' | 'app';
+export type AdminPriority = 'alta' | 'media' | 'baixa';
+export type TicketStatus  = 'novo' | 'em_atendimento' | 'resolvido';
+
+/* SLA-alvo (min) por prioridade — base do cálculo de cumprimento */
+export const SLA_TARGET: Record<AdminPriority, number> = { alta: 15, media: 30, baixa: 60 };
+
+/* Categorias ITSM (estilo ServiceNow) */
+export const TICKET_CATEGORIES = [
+  'Incidente de Rede', 'Faturamento', 'Comercial / Vendas', 'Conta e Acesso', 'Dúvida Geral',
+] as const;
+
+export const mockAttendanceQueue = [
+  {
+    id: 'Q-1',
+    ticketId: 'INC-2026-0481',
+    name: 'Marcos Vinícius Aragão',
+    initials: 'MA',
+    cpf: '***.***.882-10',
+    contractSince: '2021-07-02',
+    channel: 'whatsapp' as AdminChannel,
+    priority: 'alta' as AdminPriority,
+    status: 'novo' as TicketStatus,
+    category: 'Incidente de Rede',
+    waitMins: 8,
+    openedMinsAgo: 12,
+    reason: 'Internet fibra instável há 2 dias',
+    serviceHealth: { internet: 'degradado', tv: 'ok', telefonia: 'ok' } as Record<string, 'ok' | 'degradado' | 'offline'>,
+    claraHistory: [
+      { role: 'clara' as const, text: 'Olá, Marcos! Eu sou a Clara. Como posso ajudar?' },
+      { role: 'user'  as const, text: 'minha internet ta caindo direto' },
+      { role: 'clara' as const, text: 'Sinto muito! Detectei uma instabilidade na fibra do seu bairro (incidente #INC-4471, aberto às 09:12). Já reiniciei seu modem remotamente. O reparo está previsto para hoje até 18h.' },
+      { role: 'user'  as const, text: 'isso não resolveu, quero falar com alguém' },
+      { role: 'clara' as const, text: 'Entendo. Vou te transferir para um especialista com todo o histórico. Um instante…' },
+    ],
+  },
+  {
+    id: 'Q-2',
+    ticketId: 'INC-2026-0480',
+    name: 'Patrícia Lemos Tavares',
+    initials: 'PT',
+    cpf: '***.***.330-55',
+    contractSince: '2019-11-20',
+    channel: 'portal' as AdminChannel,
+    priority: 'media' as AdminPriority,
+    status: 'em_atendimento' as TicketStatus,
+    category: 'Faturamento',
+    waitMins: 3,
+    openedMinsAgo: 22,
+    reason: 'Contestação de cobrança na fatura',
+    serviceHealth: { internet: 'ok', tv: 'ok', telefonia: 'ok' },
+    claraHistory: [
+      { role: 'clara' as const, text: 'Olá, Patrícia! Como posso ajudar?' },
+      { role: 'user'  as const, text: 'tem uma cobrança que não reconheço na minha fatura' },
+      { role: 'clara' as const, text: 'Sua fatura de Abril 2026 está em R$ 519,70. Identifiquei um item "Pacote Premiere +R$ 39,90" adicionado em 02/04. Você reconhece essa contratação?' },
+      { role: 'user'  as const, text: 'não fui eu que contratei isso' },
+      { role: 'clara' as const, text: 'Certo, isso precisa de análise humana. Estou te encaminhando para um atendente com o histórico completo.' },
+    ],
+  },
+  {
+    id: 'Q-3',
+    ticketId: 'REQ-2026-1192',
+    name: 'Sanches Jr. LTDA',
+    initials: 'SJ',
+    cpf: '40.***.***/0001-47',
+    contractSince: '2022-03-15',
+    channel: 'app' as AdminChannel,
+    priority: 'baixa' as AdminPriority,
+    status: 'novo' as TicketStatus,
+    category: 'Comercial / Vendas',
+    waitMins: 1,
+    openedMinsAgo: 4,
+    reason: 'Dúvida sobre upgrade de ramais (Claro Fone)',
+    serviceHealth: { internet: 'ok', tv: 'ok', telefonia: 'ok' },
+    claraHistory: [
+      { role: 'clara' as const, text: 'Olá! Como posso ajudar a Sanches Jr. hoje?' },
+      { role: 'user'  as const, text: 'quero adicionar mais ramais no claro fone' },
+      { role: 'clara' as const, text: 'O plano Claro Fone Empresarial (R$ 199,90) oferece ramais ilimitados + integração CRM. Quer falar com um consultor para migração sem perda de numeração?' },
+      { role: 'user'  as const, text: 'sim, quero falar com um consultor' },
+    ],
+  },
+];
+
+/* Tickets já resolvidos — alimentam histórico e métricas de SLA do dashboard */
+export const mockResolvedTickets = [
+  {
+    id: 'R-1', ticketId: 'INC-2026-0479', name: 'Carla Menezes', initials: 'CM',
+    cpf: '***.***.114-92', contractSince: '2020-02-10',
+    channel: 'whatsapp' as AdminChannel, priority: 'alta' as AdminPriority,
+    status: 'resolvido' as TicketStatus, category: 'Incidente de Rede',
+    waitMins: 0, openedMinsAgo: 95, resolvedInMins: 11,
+    firstResponseMins: 3, resolvedDaysAgo: 2, csat: 5,
+    reason: 'TV+ sem sinal após queda de energia',
+    serviceHealth: { internet: 'ok', tv: 'ok', telefonia: 'ok' } as Record<string, 'ok' | 'degradado' | 'offline'>,
+    claraHistory: [
+      { role: 'clara' as const, text: 'Olá, Carla! Como posso ajudar?' },
+      { role: 'user'  as const, text: 'minha tv não liga depois que faltou luz' },
+      { role: 'clara' as const, text: 'Enviei um sinal de re-sincronização para o seu box. Pode levar até 2 minutos. Se não voltar, falo com um técnico.' },
+      { role: 'user'  as const, text: 'continua na mesma' },
+      { role: 'clara' as const, text: 'Transferindo para suporte técnico com o histórico.' },
+    ],
+  },
+  {
+    id: 'R-2', ticketId: 'REQ-2026-1189', name: 'Eduardo Pinto', initials: 'EP',
+    cpf: '***.***.701-33', contractSince: '2023-06-01',
+    channel: 'portal' as AdminChannel, priority: 'media' as AdminPriority,
+    status: 'resolvido' as TicketStatus, category: 'Faturamento',
+    waitMins: 0, openedMinsAgo: 140, resolvedInMins: 41,
+    firstResponseMins: 9, resolvedDaysAgo: 9, csat: 4,
+    reason: '2ª via de boleto não chegou por e-mail',
+    serviceHealth: { internet: 'ok', tv: 'ok', telefonia: 'ok' },
+    claraHistory: [
+      { role: 'clara' as const, text: 'Oi, Eduardo! Como posso ajudar?' },
+      { role: 'user'  as const, text: 'pedi a segunda via e não recebi' },
+      { role: 'clara' as const, text: 'Reenviei o boleto para o e-mail cadastrado. Caso não chegue em 5 min, posso acionar um atendente.' },
+      { role: 'user'  as const, text: 'não chegou, quero falar com atendente' },
+    ],
+  },
+  {
+    id: 'R-3', ticketId: 'INC-2026-0476', name: 'Juliana Reis', initials: 'JR',
+    cpf: '***.***.558-04', contractSince: '2018-09-22',
+    channel: 'app' as AdminChannel, priority: 'baixa' as AdminPriority,
+    status: 'resolvido' as TicketStatus, category: 'Conta e Acesso',
+    waitMins: 0, openedMinsAgo: 220, resolvedInMins: 78,
+    firstResponseMins: 14, resolvedDaysAgo: 35, csat: 3,
+    reason: 'Não consegue redefinir senha do app',
+    serviceHealth: { internet: 'ok', tv: 'ok', telefonia: 'ok' },
+    claraHistory: [
+      { role: 'clara' as const, text: 'Olá, Juliana! Como posso ajudar?' },
+      { role: 'user'  as const, text: 'não consigo trocar minha senha no app' },
+      { role: 'clara' as const, text: 'Enviei um link de redefinição para o seu e-mail e SMS. Conseguiu acessar?' },
+      { role: 'user'  as const, text: 'o link diz que expirou' },
+    ],
+  },
+];
+
+/* ─── RBAC · papéis do One Hub Admin ──────────────────────────────────────
+ * atendente → console ITSM (fila, conversa, CRM)
+ * gerente   → dashboard gerencial (gráficos, métricas, config de SLA) + console */
+export type AdminRole = 'atendente' | 'gerente';
+
+export const ADMIN_USERS: { email: string; password: string; role: AdminRole; name: string }[] = [
+  { email: 'atendente@claro.com.br', password: 'admin',   role: 'atendente', name: 'Atendente Claro' },
+  { email: 'gerente@claro.com.br',   password: 'gerente', role: 'gerente',   name: 'Gerência Claro'  },
+];
+
+/* compat: credencial demo do atendente */
+export const ADMIN_DEMO = { email: 'atendente@claro.com.br', password: 'admin' };
+
+/* Permissões por papel (RBAC) */
+export const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
+  atendente: ['ver_fila', 'atender_ticket', 'resolver_ticket', 'ver_crm'],
+  gerente: [
+    'ver_fila', 'atender_ticket', 'resolver_ticket', 'ver_crm',
+    'ver_dashboard', 'config_sla', 'ver_metricas', 'exportar_relatorio', 'gerir_equipe',
+  ],
+};
+
+/* Série temporal (últimos 7 dias) — alimenta gráficos do dashboard gerencial */
+export const mockTicketTrend = [
+  { dia: 'Seg', abertos: 42, resolvidos: 38, slaPct: 88 },
+  { dia: 'Ter', abertos: 51, resolvidos: 47, slaPct: 84 },
+  { dia: 'Qua', abertos: 38, resolvidos: 40, slaPct: 92 },
+  { dia: 'Qui', abertos: 60, resolvidos: 55, slaPct: 79 },
+  { dia: 'Sex', abertos: 72, resolvidos: 64, slaPct: 81 },
+  { dia: 'Sáb', abertos: 33, resolvidos: 35, slaPct: 95 },
+  { dia: 'Dom', abertos: 21, resolvidos: 22, slaPct: 97 },
+];
+
+/* ─── Períodos de análise (até 1 ano) ─────────────────────────────────────── */
+export const ANALYSIS_PERIODS = [
+  { id: '7d',  label: 'Últimos 7 dias',  days: 7   },
+  { id: '30d', label: 'Últimos 30 dias', days: 30  },
+  { id: '90d', label: 'Último trimestre', days: 90 },
+  { id: '180d', label: 'Últimos 6 meses', days: 180 },
+  { id: '365d', label: 'Últimos 12 meses', days: 365 },
+] as const;
+export type PeriodId = typeof ANALYSIS_PERIODS[number]['id'];
+
+/* PRNG determinístico (mesmo período → mesmos números, sem flicker) */
+function seeded(n: number) { const x = Math.sin(n) * 10000; return x - Math.floor(x); }
+
+const MONTHS_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const WEEKDAYS_PT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+/* Gera métricas agregadas + série temporal para o período escolhido.
+ * Granularidade: dia (≤14d), semana (≤90d), mês (>90d). */
+export function genPeriodMetrics(days: number) {
+  const now = new Date('2026-05-17');
+  let buckets: { label: string; key: number }[] = [];
+
+  if (days <= 14) {
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now); d.setDate(d.getDate() - i);
+      buckets.push({ label: WEEKDAYS_PT[d.getDay()], key: i });
+    }
+  } else if (days <= 90) {
+    const weeks = Math.round(days / 7);
+    for (let i = weeks - 1; i >= 0; i--) buckets.push({ label: `S${weeks - i}`, key: i });
+  } else {
+    const months = Math.round(days / 30);
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now); d.setMonth(d.getMonth() - i);
+      buckets.push({ label: MONTHS_PT[d.getMonth()], key: i });
+    }
+  }
+
+  const scale = days <= 14 ? 1 : days <= 90 ? 6 : 26; // volume por bucket cresce com a janela
+  const series = buckets.map((b, i) => {
+    const r1 = seeded(b.key + days + 1);
+    const r2 = seeded(b.key * 3 + days + 7);
+    const abertos = Math.round((28 + r1 * 55) * scale);
+    const resolvidos = Math.round(abertos * (0.84 + r2 * 0.16));
+    const slaPct = Math.round(76 + seeded(b.key + days + 13) * 22);
+    return { label: b.label, abertos, resolvidos, slaPct, idx: i };
+  });
+
+  const total = series.reduce((s, x) => s + x.abertos, 0);
+  const resolvidos = series.reduce((s, x) => s + x.resolvidos, 0);
+  const slaPct = Math.round(series.reduce((s, x) => s + x.slaPct, 0) / series.length);
+  const avgResolutionMin = Math.round(18 + seeded(days) * 26);     // tempo médio de resolução
+  const firstResponseMin = Math.round(2 + seeded(days + 5) * 7);   // tempo de 1ª resposta
+  const csat = +(3.9 + seeded(days + 9) * 1.05).toFixed(1);        // satisfação (1-5)
+  const reopenRate = +(2 + seeded(days + 11) * 6).toFixed(1);      // taxa de reabertura %
+  const claraAutoPct = Math.round(58 + seeded(days + 17) * 30);    // % resolvido pela Clara
+
+  const byChannel = [
+    { key: 'whatsapp', label: 'WhatsApp',   value: Math.round(total * (0.40 + seeded(days + 2) * 0.1)) },
+    { key: 'portal',   label: 'Portal Web', value: Math.round(total * (0.32 + seeded(days + 3) * 0.08)) },
+    { key: 'app',      label: 'App',        value: Math.round(total * (0.20 + seeded(days + 4) * 0.06)) },
+  ];
+  const byCategory = TICKET_CATEGORIES.map((c, i) => ({
+    key: c, label: c, value: Math.round(total * (0.30 - i * 0.045) + seeded(days + i) * 12),
+  }));
+
+  return {
+    series, total, resolvidos, slaPct, avgResolutionMin, firstResponseMin,
+    csat, reopenRate, claraAutoPct, byChannel, byCategory,
+  };
+}
+export type PeriodMetrics = ReturnType<typeof genPeriodMetrics>;
+
+/* ─── Compliance · ISO/IEC 27001 + LGPD ───────────────────────────────────── */
+export const COMPLIANCE = {
+  iso27001: 'ISO/IEC 27001 · A.12.4 · A.9',
+  lgpd: 'LGPD Lei 13.709/2018 · dados pessoais mascarados',
+  retentionDays: 365,
+};
+
 export const serviceDetails = {
   mobile: {
     label: 'Claro Celular', icon: 'Smartphone' as const, tagline: 'Sem fronteiras, sem limites',
@@ -191,3 +497,11 @@ export type ServiceDetailKey = keyof typeof serviceDetails;
 export type AvailablePlan     = typeof availablePlans[number];
 export type Faq               = typeof faqs[number];
 export type AccountId         = keyof typeof accountProfiles;
+export type QueueItem         = typeof mockAttendanceQueue[number] & {
+  resolvedInMins?: number;
+  firstResponseMins?: number;
+  resolvedDaysAgo?: number;
+  csat?: number;
+};
+export type ResolvedTicket    = typeof mockResolvedTickets[number];
+export type TicketTrendPoint  = typeof mockTicketTrend[number];

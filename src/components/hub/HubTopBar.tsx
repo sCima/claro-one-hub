@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
-  Menu, Search, Sun, Moon, Bell, ChevronDown, Plus, LogOut, X,
+  Menu, Search, Sun, Moon, Bell, ChevronDown, Plus, LogOut, X, ShieldCheck,
 } from 'lucide-react';
 import { useClaroContext } from '../../context/ClaroContext';
 import { SearchResults } from './widgets/SearchResults';
@@ -25,6 +26,7 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
   } = useClaroContext();
   const profile = activeUser ?? user;
   const [searchFocus, setSearchFocus] = useState(false);
+  const router = useRouter();
 
   const [notifOpen,   setNotifOpen]   = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -250,6 +252,15 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
                 Cliente {profile?.tier}
               </div>
             </div>
+            <button
+              onClick={() => { setProfileOpen(false); router.push('/admin'); }}
+              className="w-full flex items-center gap-2.5 px-5 py-3 text-sm text-warm-600 dark:text-warm-200 hover:bg-warm-50 dark:hover:bg-warm-700 hover:text-claro border-b border-warm-100 dark:border-warm-700"
+            >
+              <ShieldCheck size={16} /> One Hub Admin
+              <span className="ml-auto text-[9px] font-bold uppercase tracking-wider bg-warm-100 dark:bg-warm-700 text-warm-500 rounded-full px-2 py-0.5">
+                Atendente
+              </span>
+            </button>
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-2.5 px-5 py-3 text-sm text-warm-600 dark:text-warm-200 hover:bg-warm-50 dark:hover:bg-warm-700 hover:text-claro"

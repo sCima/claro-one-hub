@@ -3,14 +3,40 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react';
 import { claroApi } from '../services/claroApi';
 import {
-  mockAccounts, accountProfiles,
+  mockAccounts, accountProfiles, mockAttendanceQueue, mockResolvedTickets,
+  ADMIN_USERS, SLA_TARGET,
   type Service, type Invoice, type DataPoint, type SupportChannel,
   type Activity, type Notification, type Recommendation, type Account,
   type ClubeData, type ClubeReward, type AvailablePlan,
+  type QueueItem, type ClaraIntentId, type TicketStatus,
+  type AdminRole, type AdminPriority,
 } from '../data/mockData';
 import type { mockUser } from '../data/mockData';
 
 type User = typeof mockUser;
+
+/* Sprint 2 §4.1 — métrica de autoatendimento */
+export interface ClaraMetric {
+  id: string;
+  intent: ClaraIntentId;
+  resolvedAuto: boolean;
+  ts: number;
+}
+
+/* Sprint 2 §4.2 — item de handover gerado pela conversa do cliente logado */
+export interface HandoverPayload {
+  reason: string;
+  history: { role: 'user' | 'clara'; text: string }[];
+}
+
+/* ISO/IEC 27001 A.12.4 — trilha de auditoria (quem fez o quê, quando) */
+export interface AuditEntry {
+  id: string;
+  ts: number;
+  actor: string;        // papel/usuário do admin
+  action: string;       // ex.: 'ticket.resolvido', 'sla.alterado', 'dados.anonimizados'
+  detail: string;
+}
 
 interface ClaroState {
   user: User | null;                    // titular base
@@ -36,6 +62,24 @@ interface ClaroState {
   confirmPayment: (invoice: Invoice) => void;
   confirmRedeem: (reward: ClubeReward) => void;
   addPlanToCombo: (plan: AvailablePlan) => void;
+  /* ─── Sprint 2 · Clara / Admin ─── */
+  claraMetrics: ClaraMetric[];
+  logClaraInteraction: (intent: ClaraIntentId, resolvedAuto: boolean) => void;
+  attendanceQueue: QueueItem[];
+  requestHandover: (payload: HandoverPayload) => void;
+  resolveQueueItem: (id: string) => void;
+  updateTicketStatus: (id: string, status: TicketStatus) => void;
+  /* ─── One Hub Admin · RBAC (acesso restrito por papel) ─── */
+  adminRole: AdminRole | null;
+  adminName: string | null;
+  adminLogin: (email: string, password: string) => AdminRole | null;
+  adminLogout: () => void;
+  /* config gerencial editável (gerente) */
+  slaConfig: Record<AdminPriority, number>;
+  updateSlaConfig: (priority: AdminPriority, minutes: number) => void;
+  /* ISO 27001 · trilha de auditoria + LGPD · anonimização */
+  auditLog: AuditEntry[];
+  anonymizeTicket: (id: string) => void;
 }
 
 const ClaroContext = createContext<ClaroState | null>(null);
@@ -57,6 +101,22 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn]       = useState(false);
   /* Serviços adicionais por conta (criados via addPlanToCombo) */
   const [extraServiceIds, setExtraServiceIds] = useState<Record<string, string[]>>({});
+  /* Sprint 2 — métricas da Clara + fila de atendimento omnichannel */
+  const [claraMetrics, setClaraMetrics]   = useState<ClaraMetric[]>([]);
+  const [attendanceQueue, setQueue]       = useState<QueueItem[]>(
+    [...mockAttendanceQueue, ...mockResolvedTickets] as QueueItem[]
+  );
+  const [adminRole, setAdminRole]         = useState<AdminRole | null>(null);
+  const [adminName, setAdminName]         = useState<string | null>(null);
+  const [slaConfig, setSlaConfig]         = useState<Record<AdminPriority, number>>({ ...SLA_TARGET });
+  const [auditLog, setAuditLog]           = useState<AuditEntry[]>([]);
+
+  const pushAudit = useCallback((actor: string, action: string, detail: string) => {
+    setAuditLog((prev) => [
+      { id: 'a-' + Date.now() + Math.random().toString(36).slice(2, 5), ts: Date.now(), actor, action, detail },
+      ...prev,
+    ].slice(0, 100));
+  }, []);
 
   /* Conta ativa + dados derivados (atualizam quando user troca conta) */
   const activeAccount = accounts.find((a) => a.active) ?? accounts[0];
@@ -223,6 +283,101 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
     setActivity((prev) => [newAct, ...prev]);
   }, [activeAccount.id]);
 
+  /* ─── Sprint 2 §4.1 · registra cada interação da Clara p/ métricas ─── */
+  const logClaraInteraction = useCallback((intent: ClaraIntentId, resolvedAuto: boolean) => {
+    setClaraMetrics((prev) => [
+      ...prev,
+      { id: 'cm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), intent, resolvedAuto, ts: Date.now() },
+    ]);
+  }, []);
+
+  /* ─── Sprint 2 §4.2 · handover suave: abre um ticket ITSM real ─── */
+  const requestHandover = useCallback((payload: HandoverPayload) => {
+    setQueue((prev) => {
+      if (prev.some((q) => q.id === 'Q-SELF')) return prev; // evita duplicar
+      const acct = accounts.find((a) => a.active) ?? accounts[0];
+      const seq = 482 + prev.filter((q) => q.id.startsWith('Q-')).length;
+      const selfItem = {
+        id: 'Q-SELF',
+        ticketId: `INC-2026-${String(seq).padStart(4, '0')}`,
+        name: acct.name,
+        initials: acct.initials,
+        cpf: user?.cpf ?? '***.***.***-**',
+        contractSince: user?.since ?? '2020-01-01',
+        channel: 'portal' as const,
+        priority: 'alta' as const,
+        status: 'novo' as const,
+        category: 'Dúvida Geral',
+        waitMins: 0,
+        openedMinsAgo: 0,
+        reason: payload.reason,
+        serviceHealth: { internet: 'ok', tv: 'ok', telefonia: 'ok' } as Record<string, 'ok' | 'degradado' | 'offline'>,
+        claraHistory: payload.history.map((h) => ({ role: h.role, text: h.text })),
+      } as unknown as QueueItem;
+      return [selfItem, ...prev];
+    });
+  }, [accounts, user]);
+
+  /* Resolver = marca como resolvido + carimba métricas (resolução, CSAT,
+   * 1ª resposta) e registra na trilha de auditoria (ISO 27001). */
+  const resolveQueueItem = useCallback((id: string) => {
+    let resolvedTicket = '';
+    setQueue((prev) => prev.map((q) => {
+      if (q.id !== id || q.status === 'resolvido') return q;
+      resolvedTicket = q.ticketId;
+      const took = Math.max(q.openedMinsAgo || 0, q.resolvedInMins ?? 0, 1);
+      return {
+        ...q,
+        status: 'resolvido' as TicketStatus,
+        resolvedInMins: took,
+        firstResponseMins: q.firstResponseMins ?? Math.max(1, Math.round(took * 0.25)),
+        resolvedDaysAgo: 0,
+        csat: q.csat ?? 5,
+      };
+    }));
+    if (resolvedTicket) {
+      pushAudit(adminRole ?? 'sistema', 'ticket.resolvido', `Ticket ${resolvedTicket} marcado como resolvido`);
+    }
+  }, [adminRole, pushAudit]);
+
+  const updateTicketStatus = useCallback((id: string, status: TicketStatus) => {
+    setQueue((prev) => prev.map((q) => q.id === id ? { ...q, status } : q));
+  }, []);
+
+  /* LGPD · direito ao esquecimento — anonimiza dados pessoais do ticket */
+  const anonymizeTicket = useCallback((id: string) => {
+    let tk = '';
+    setQueue((prev) => prev.map((q) => {
+      if (q.id !== id) return q;
+      tk = q.ticketId;
+      return {
+        ...q,
+        name: 'Titular anonimizado',
+        initials: '··',
+        cpf: '•••.•••.•••-••',
+        claraHistory: q.claraHistory.map((h) => ({ ...h, text: h.role === 'user' ? '[conteúdo removido — LGPD]' : h.text })),
+      };
+    }));
+    if (tk) pushAudit(adminRole ?? 'sistema', 'dados.anonimizados', `LGPD: dados pessoais do ticket ${tk} anonimizados`);
+  }, [adminRole, pushAudit]);
+
+  /* ─── One Hub Admin · RBAC (login por papel) ─── */
+  const adminLogin = useCallback((email: string, password: string): AdminRole | null => {
+    const u = ADMIN_USERS.find(
+      (x) => x.email === email.trim().toLowerCase() && x.password === password
+    );
+    if (u) { setAdminRole(u.role); setAdminName(u.name); return u.role; }
+    return null;
+  }, []);
+
+  const adminLogout = useCallback(() => { setAdminRole(null); setAdminName(null); }, []);
+
+  const updateSlaConfig = useCallback((priority: AdminPriority, minutes: number) => {
+    const v = Math.max(1, Math.round(minutes));
+    setSlaConfig((prev) => ({ ...prev, [priority]: v }));
+    pushAudit(adminRole ?? 'gerente', 'sla.alterado', `SLA "${priority}" definido para ${v} min`);
+  }, [adminRole, pushAudit]);
+
   return (
     <ClaroContext.Provider value={{
       user, activeUser, services, invoices, dataHistory, supportChannels,
@@ -231,6 +386,11 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
       loading, isLoggedIn,
       login, logout, switchAccount, toggleDark, setSearchQuery,
       confirmPayment, confirmRedeem, addPlanToCombo,
+      claraMetrics, logClaraInteraction,
+      attendanceQueue, requestHandover, resolveQueueItem, updateTicketStatus,
+      adminRole, adminName, adminLogin, adminLogout,
+      slaConfig, updateSlaConfig,
+      auditLog, anonymizeTicket,
     }}>
       {children}
     </ClaroContext.Provider>

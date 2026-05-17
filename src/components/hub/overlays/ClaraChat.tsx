@@ -1,8 +1,13 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { X, Send, Sparkles, MessageCircle, ChevronDown } from 'lucide-react';
+import {
+  Send, Sparkles, MessageCircle, ChevronDown, Headphones,
+  MessageSquare, Phone, ArrowRight, CheckCircle2,
+} from 'lucide-react';
 import type { Service, Invoice, ClubeData } from '../../../data/mockData';
+import { claraIntents, type ClaraIntentId } from '../../../data/mockData';
+import { useClaroContext } from '../../../context/ClaroContext';
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
 const fmtBRL = (n: number) => n.toFixed(2).replace('.', ',');
@@ -17,169 +22,168 @@ interface Message {
 interface Props {
   open: boolean;
   onClose: () => void;
-  /* contexto pra Clara responder com dados reais */
   userName?: string;
   services: Service[];
   invoices: Invoice[];
   clube: ClubeData | null;
-  /* Pergunta pré-pronta a ser enviada automaticamente quando o chat abrir */
   prefill?: string | null;
   onPrefillConsumed?: () => void;
 }
 
-/* Gera resposta da Clara baseada em palavras-chave */
-function claraReply(input: string, ctx: { name: string; services: Service[]; invoices: Invoice[]; clube: ClubeData | null }): string {
-  const q = input.toLowerCase().trim();
-  const pendingInv = ctx.invoices.find((i) => i.status === 'pending');
-  const monthly = ctx.services.reduce((sum, s) => sum + s.amount, 0);
+type Ctx = { name: string; services: Service[]; invoices: Invoice[]; clube: ClubeData | null };
 
-  /* Saudação */
-  if (/\b(oi|olá|ola|hey|hello|bom dia|boa tarde|boa noite)\b/.test(q)) {
-    return `Oi, ${ctx.name}! 👋 Posso te ajudar com fatura, planos, consumo, suporte ou o Claro Clube. Em que posso ser útil agora?`;
+/* ─── Sprint 2 §3.4 · Classificação de intenção ──────────────────────────── */
+function classifyIntent(input: string): ClaraIntentId {
+  const q = input.toLowerCase().trim();
+  for (const it of claraIntents) {
+    if (it.patterns.test(q)) return it.id;
   }
-  /* Fatura / pagamento */
-  if (/(fatura|pagar|vencimento|boleto|pix|cobranca|cobrança)/.test(q)) {
-    if (pendingInv) {
-      return `Sua fatura de ${pendingInv.month} está aberta no valor de R$ ${fmtBRL(pendingInv.amount)} com vencimento em ${pendingInv.dueDate.split('-').reverse().join('/')}. Quer pagar agora? Toque em "Faturas" no menu lateral, ou direto no card escuro da Visão geral.`;
+  return 'fora_de_escopo';
+}
+
+/* ─── Resposta da Clara por intent (consulta os dados reais do cliente) ──── */
+function buildReply(intent: ClaraIntentId, ctx: Ctx): string {
+  const pending = ctx.invoices.find((i) => i.status === 'pending');
+  const monthly = ctx.services.reduce((s, x) => s + x.amount, 0);
+  const br = (iso: string) => iso.split('-').reverse().join('/');
+
+  switch (intent) {
+    case 'saudacao':
+      return `Olá, ${ctx.name}! Eu sou a Clara, sua assistente Claro. Como posso te ajudar hoje?`;
+
+    case 'consultar_fatura':
+      return pending
+        ? `Sua fatura de ${pending.month} está aberta no valor de R$ ${fmtBRL(pending.amount)}, com vencimento em ${br(pending.dueDate)}. Quer pagar agora? Toque em "Faturas" no menu lateral ou diretamente no card escuro da Visão geral.`
+        : `Você está em dia — nenhuma fatura aberta no momento. 🎉`;
+
+    case 'segunda_via_fatura':
+      return pending
+        ? `Gerei a 2ª via da fatura de ${pending.month} (R$ ${fmtBRL(pending.amount)}). O link do boleto é válido por 24h. Quer que eu envie por e-mail ou WhatsApp?`
+        : `Não há fatura em aberto para gerar 2ª via. A última fatura já consta como paga. ✅`;
+
+    case 'consultar_plano':
+      return `Você está no Combo Multi com ${ctx.services.length} serviço(s): ${ctx.services.map((s) => s.label).join(', ')}. Total de R$ ${fmtBRL(monthly)}/mês. Quer ver os detalhes de algum serviço específico?`;
+
+    case 'alterar_plano':
+      return `Tenho ofertas elegíveis para você! Posso adicionar serviços como Claro Vídeo, hdtv ou Claro Fone ao seu combo (com desconto progressivo). Toque em "+ Adicionar plano" no painel de Serviços para ver as opções.`;
+
+    case 'status_servico': {
+      const net = ctx.services.find((s) => s.type === 'broadband');
+      return net
+        ? `Verifiquei sua ${net.label} ("${net.plan}"): detectei uma instabilidade localizada na fibra do seu bairro (incidente registrado). Já reiniciei seu equipamento remotamente — reparo previsto para hoje. Acompanhe o banner de status no topo da Visão geral.`
+        : `Consultei o status de rede da sua região: tudo operando normalmente. Se o problema persistir, posso te transferir para um técnico.`;
     }
-    return `Você está em dia! Nenhuma fatura aberta no momento. 🎉`;
+
+    case 'solicitar_atendente':
+      return `Sem problema, ${ctx.name}. Vou te transferir para um especialista humano com TODO o histórico desta conversa — você não vai precisar repetir nada. Escolha o canal abaixo:`;
+
+    case 'despedida':
+      return `Por nada, ${ctx.name}! 😊 Qualquer coisa, é só me chamar de novo. Até mais!`;
+
+    case 'fora_de_escopo':
+    default:
+      return `Essa eu não consegui resolver sozinha 🤔. Posso te conectar com um atendente humano agora — ele recebe todo o contexto desta conversa. Quer que eu transfira?`;
   }
-  /* Plano / combo */
-  if (/(plano|combo|trocar plano|mudar plano|migrar)/.test(q)) {
-    return `Você está no Combo Multi com ${ctx.services.length} serviço(s) ativos, totalizando R$ ${fmtBRL(monthly)}/mês. Para adicionar um plano novo, clique no botão "+ Adicionar plano" no painel de Serviços. Para trocar um existente, abra o serviço na sidebar.`;
-  }
-  /* Internet / wi-fi */
-  if (/(internet|wifi|wi-fi|fibra|banda)/.test(q)) {
-    const internet = ctx.services.find((s) => s.type === 'broadband');
-    if (internet) return `Sua Claro Internet está no plano "${internet.plan}" — usando ${internet.dataUsed} ${internet.unit ?? 'GB'} este mês. Status: ✅ funcionando normalmente.`;
-    return `Você ainda não tem Claro Internet contratada. Posso te mostrar planos a partir de R$ 99,90?`;
-  }
-  /* 5G / celular */
-  if (/(5g|celular|movel|móvel|chip|recarga)/.test(q)) {
-    const mob = ctx.services.find((s) => s.type === 'mobile');
-    if (mob) return `Sua linha Claro Celular: ${mob.identifier} no plano "${mob.plan}". Você usou ${mob.dataUsed}${mob.unit} de ${mob.dataLimit}${mob.unit} este mês. 5G+ está incluso e ativo na sua área.`;
-    return `Não vejo uma linha Claro Celular ativa nessa conta. Quer contratar uma? Os planos começam em R$ 29,90 (Pré 30).`;
-  }
-  /* TV */
-  if (/(tv|canal|canais|streaming|netflix|hbo|globoplay|parabolica|parabólica)/.test(q)) {
-    const tv = ctx.services.find((s) => s.type === 'tv');
-    if (tv) return `Seu Claro TV+ "${tv.plan}" tem ${tv.channels ?? 0} canais e inclui ${(tv.streaming ?? []).join(', ')}. Se quiser TV gratuita pra outra residência, dá uma olhada no Claro tv Livre (parabólica banda Ku, sem mensalidade).`;
-    return `Sem Claro TV+ contratada. Os pacotes começam em R$ 79,90. Para opção sem mensalidade, temos Claro tv Livre e Claro hdtv Livre via parabólica.`;
-  }
-  /* Claro Vídeo / streaming */
-  if (/(claro video|claro vídeo|video sob demanda|vod)/.test(q)) {
-    return `Claro Vídeo é nosso streaming sob demanda — filmes, séries e novelas latinas exclusivas. Mensal R$ 19,90 ou anual R$ 199 (2 meses grátis). Toque em "+ Adicionar plano" pra incluir no combo.`;
-  }
-  /* Claro Fone / VoIP empresarial */
-  if (/(claro fone|voip|pabx|ramal|ramais|empresa)/.test(q)) {
-    return `Claro Fone é nossa solução de voz IP profissional com PABX em nuvem. Planos: Básico R$ 29,90 (1 ramal), Profissional R$ 79,90 (até 5 ramais com URA), Empresarial R$ 199,90 (ramais ilimitados + integração CRM).`;
-  }
-  /* Claro Fixo */
-  if (/(fixo|telefone fixo|residencial)/.test(q)) {
-    const fix = ctx.services.find((s) => s.type === 'fixo');
-    if (fix) return `Seu Claro Fixo está no "${fix.plan}" — ${fix.identifier}. Tudo funcionando normalmente.`;
-    return `Claro Fixo é nosso telefone residencial digital. Plano Ilimitado por R$ 49,90/mês (chamadas ilimitadas para fixo Brasil).`;
-  }
-  /* Clube / pontos */
-  if (/(clube|pontos|recompensa|resgate|milhas)/.test(q)) {
-    if (ctx.clube) return `Você tem ${ctx.clube.points.toLocaleString('pt-BR')} pontos no Claro Clube · tier ${ctx.clube.tier}. Vencem ${ctx.clube.expiringPoints} pontos em ${ctx.clube.expiringDate.split('-').reverse().join('/')}. Quer ver o que dá pra resgatar?`;
-    return `Não consegui carregar seu saldo do Clube agora. Tente abrir a página "Claro Clube" na sidebar.`;
-  }
-  /* Cancelar */
-  if (/(cancelar|encerrar|sair|portabilidade)/.test(q)) {
-    return `Para cancelar um serviço: vá em "Meus serviços" > escolha o serviço > "Gerenciar plano" > "Cancelar". Atendimento humano em até 5 min. Quer que eu te conecte agora?`;
-  }
-  /* Cobertura */
-  if (/(cobertura|sinal|antena|área|area|região|regiao)/.test(q)) {
-    return `O 5G+ Claro está em mais de 720 cidades. Pra checar sua região exata, consulte cobertura.claro.com.br ou me diga sua cidade que eu confirmo.`;
-  }
-  /* Suporte / humano */
-  if (/(humano|atendente|suporte|reclamar|ajuda|problema)/.test(q)) {
-    return `Posso te conectar com um atendente humano agora pelo Chat (espera ~2 min) ou por WhatsApp (imediato). Qual você prefere?`;
-  }
-  /* Obrigado */
-  if (/(obrigad|valeu|thanks|brigad)/.test(q)) {
-    return `Por nada, ${ctx.name}! 😊 Qualquer coisa, é só chamar.`;
-  }
-  /* Default */
-  return `Anotei sua dúvida: "${input}". Não tenho 100% de certeza da resposta — quer que eu transfira pra um especialista humano? Enquanto isso, dá uma olhada nas Perguntas frequentes em "Suporte".`;
 }
 
 const SUGGESTIONS = [
   'Qual o valor da minha fatura?',
-  'Como adicionar um plano?',
-  'Quantos pontos tenho no Clube?',
-  'O 5G está na minha região?',
+  'Preciso da 2ª via do boleto',
+  'Quero trocar de plano',
+  'Minha internet caiu',
+];
+
+const HANDOVER_CHANNELS = [
+  { id: 'chat',  icon: Headphones,    label: 'Chat Online',  meta: 'Espera ~2 min' },
+  { id: 'wpp',   icon: MessageSquare, label: 'WhatsApp',     meta: 'Imediato' },
+  { id: 'fone',  icon: Phone,         label: 'Ligar 106',    meta: 'Voz · 24h' },
 ];
 
 export function ClaraChat({
   open, onClose, userName = 'cliente', services, invoices, clube,
   prefill, onPrefillConsumed,
 }: Props) {
-  const ctx = useMemo(() => ({ name: userName.split(' ')[0], services, invoices, clube }),
+  const { logClaraInteraction, requestHandover } = useClaroContext();
+  const ctx = useMemo<Ctx>(() => ({ name: userName.split(' ')[0], services, invoices, clube }),
     [userName, services, invoices, clube]);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
+  const [handoverOpen, setHandoverOpen] = useState(false);
+  const [handoverDone, setHandoverDone] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastReason = useRef<string>('Atendimento solicitado pelo cliente');
 
-  /* Mensagem inicial sempre que o chat abre */
   useEffect(() => {
     if (open && messages.length === 0) {
       setMessages([{
-        id: 'm-init',
-        role: 'clara',
+        id: 'm-init', role: 'clara',
         text: `Olá, ${ctx.name}! Eu sou a Clara, sua assistente Claro. Como posso te ajudar hoje?`,
         ts: Date.now(),
       }]);
     }
   }, [open, ctx.name, messages.length]);
 
-  /* Auto-scroll quando chega mensagem */
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, typing]);
+  }, [messages, typing, handoverOpen, handoverDone]);
 
   const send = (text?: string) => {
     const content = (text ?? input).trim();
     if (!content) return;
 
-    setMessages((m) => [
-      ...m,
-      { id: 'u-' + Date.now(), role: 'user', text: content, ts: Date.now() },
-    ]);
+    const intent = classifyIntent(content);
+    const intentDef = claraIntents.find((i) => i.id === intent);
+    const resolvedAuto = intentDef?.resolvedAuto ?? false;
+
+    setMessages((m) => [...m, { id: 'u-' + Date.now(), role: 'user', text: content, ts: Date.now() }]);
     setInput('');
     setTyping(true);
 
-    /* Resposta simulada com delay variável (mais natural) */
-    const delay = 700 + Math.min(content.length * 25, 1400);
+    const delay = 700 + Math.min(content.length * 22, 1300);
     setTimeout(() => {
-      setMessages((m) => [
-        ...m,
-        { id: 'c-' + Date.now(), role: 'clara', text: claraReply(content, ctx), ts: Date.now() },
-      ]);
+      const reply = buildReply(intent, ctx);
+      setMessages((m) => [...m, { id: 'c-' + Date.now(), role: 'clara', text: reply, ts: Date.now() }]);
       setTyping(false);
+
+      /* Sprint 2 §4.1 — registra métrica de autoatendimento */
+      logClaraInteraction(intent, resolvedAuto);
+
+      /* Sprint 2 §4.2 — handover suave */
+      if (intent === 'solicitar_atendente' || intent === 'fora_de_escopo') {
+        lastReason.current = intent === 'solicitar_atendente'
+          ? 'Cliente solicitou atendente humano'
+          : `Intent fora de escopo: "${content}"`;
+        setHandoverOpen(true);
+      }
     }, delay);
   };
 
-  /* Auto-envia a pergunta pré-pronta vinda da busca */
   useEffect(() => {
     if (open && prefill && messages.length <= 1) {
-      const t = setTimeout(() => {
-        send(prefill);
-        onPrefillConsumed?.();
-      }, 400);
+      const t = setTimeout(() => { send(prefill); onPrefillConsumed?.(); }, 400);
       return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, prefill]);
 
+  const confirmHandover = () => {
+    requestHandover({
+      reason: lastReason.current,
+      history: messages.map((m) => ({ role: m.role, text: m.text })),
+    });
+    setHandoverOpen(false);
+    setHandoverDone(true);
+    setMessages((m) => [...m, {
+      id: 'h-' + Date.now(), role: 'clara',
+      text: 'Pronto! Você entrou na fila de atendimento humano e o especialista já recebeu todo o histórico desta conversa. Pode aguardar aqui mesmo — não vai precisar repetir nada. 🤝',
+      ts: Date.now(),
+    }]);
+  };
+
   const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
   if (!open) return null;
@@ -208,10 +212,7 @@ export function ClaraChat({
       {/* Mensagens */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-warm-50 dark:bg-warm-900/40">
         {messages.map((m) => (
-          <div
-            key={m.id}
-            className={cx('flex bubble-in', m.role === 'user' ? 'justify-end' : 'justify-start')}
-          >
+          <div key={m.id} className={cx('flex bubble-in', m.role === 'user' ? 'justify-end' : 'justify-start')}>
             <div
               className={cx(
                 'max-w-[85%] px-3.5 py-2.5 text-[13px] leading-relaxed',
@@ -224,6 +225,7 @@ export function ClaraChat({
             </div>
           </div>
         ))}
+
         {typing && (
           <div className="flex justify-start bubble-in">
             <div className="px-4 py-3 bg-white dark:bg-warm-700 rounded-2xl rounded-bl-sm shadow-sm text-warm-500 dark:text-warm-300">
@@ -234,12 +236,46 @@ export function ClaraChat({
           </div>
         )}
 
-        {/* Sugestões só na primeira interação */}
-        {messages.length === 1 && !typing && (
-          <div className="pt-2 space-y-1.5">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-warm-400 px-1">
-              Sugestões
+        {/* Card de handover suave (Sprint 2 §4.2) */}
+        {handoverOpen && !typing && (
+          <div className="bubble-in bg-white dark:bg-warm-700 rounded-2xl border border-warm-200 dark:border-warm-600 p-4 shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-claro mb-3">
+              Transferir para humano
             </p>
+            <div className="space-y-1.5">
+              {HANDOVER_CHANNELS.map((c) => {
+                const Icon = c.icon;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={confirmHandover}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-warm-200/70 dark:border-warm-600 hover:border-claro hover:bg-claro-soft dark:hover:bg-claro/10 transition-colors text-left"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-warm-100 dark:bg-warm-600 flex items-center justify-center shrink-0">
+                      <Icon size={15} className="text-claro" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-bold text-warm-900 dark:text-warm-50">{c.label}</p>
+                      <p className="text-[10px] text-warm-500">{c.meta}</p>
+                    </div>
+                    <ArrowRight size={13} className="text-warm-400 shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {handoverDone && !typing && (
+          <div className="bubble-in flex items-center gap-2 justify-center text-[11px] font-bold text-green-700 dark:text-green-400 py-1">
+            <CheckCircle2 size={14} /> Conversa transferida com histórico
+          </div>
+        )}
+
+        {/* Sugestões só na primeira interação */}
+        {messages.length === 1 && !typing && !handoverOpen && (
+          <div className="pt-2 space-y-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-warm-400 px-1">Sugestões</p>
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}

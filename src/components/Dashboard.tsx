@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { HubSidebar, type SectionId } from './hub/HubSidebar';
 import { HubTopBar } from './hub/HubTopBar';
@@ -100,6 +100,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [claraPrefill, setClaraPrefill] = useState<string | null>(null);
 
   const { toasts, push, dismiss } = useToasts();
+
+  /* Abrir a Clara a partir de outras telas (ex.: Suporte › Chat Online) */
+  useEffect(() => {
+    const openClara = () => setClaraOpen(true);
+    window.addEventListener('onehub:open-clara', openClara);
+    return () => window.removeEventListener('onehub:open-clara', openClara);
+  }, []);
 
   const { addPlanToCombo, activeUser } = useClaroContext();
 

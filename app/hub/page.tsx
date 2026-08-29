@@ -10,12 +10,12 @@ export default function HubPage() {
   const { isLoggedIn, logout } = useClaroContext();
 
   useEffect(() => {
-    if (!isLoggedIn) router.replace('/');
+    if (!isLoggedIn) router.replace('/login');
   }, [isLoggedIn, router]);
 
   const handleLogout = () => {
     logout();
-    router.push('/');
+    router.push('/login');
   };
 
   if (!isLoggedIn) return null;

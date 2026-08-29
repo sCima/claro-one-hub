@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { ClaroProvider } from '@/src/context/ClaroContext';
+import { VLibrasWidget } from '@/src/components/a11y/VLibrasWidget';
 
 export const metadata: Metadata = {
   title: 'Claro One Hub',
@@ -15,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR" className="h-full">
       <body className="min-h-full antialiased">
         <ClaroProvider>{children}</ClaroProvider>
+        <VLibrasWidget />
       </body>
     </html>
   );

@@ -1,16 +1,20 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Send, Sparkles, MessageCircle, ChevronDown, Headphones,
-  MessageSquare, Phone, ArrowRight, CheckCircle2,
+  MessageSquare, Phone, ArrowRight, CheckCircle2, ShieldCheck, Lock,
 } from 'lucide-react';
 import type { Service, Invoice, ClubeData } from '../../../data/mockData';
-import { claraIntents, type ClaraIntentId } from '../../../data/mockData';
 import { useClaroContext } from '../../../context/ClaroContext';
+import { detectIntent, intentLabel } from '../../../services/claraNlu';
+import { buildReply, resumeLine, type ClaraContext as Ctx } from '../../../services/claraReply';
+import type { Canal } from '../../../services/session';
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
-const fmtBRL = (n: number) => n.toFixed(2).replace('.', ',');
+
+const CANAL: Canal = 'web';
 
 interface Message {
   id: string;
@@ -30,62 +34,6 @@ interface Props {
   onPrefillConsumed?: () => void;
 }
 
-type Ctx = { name: string; services: Service[]; invoices: Invoice[]; clube: ClubeData | null };
-
-/* ─── Sprint 2 §3.4 · Classificação de intenção ──────────────────────────── */
-function classifyIntent(input: string): ClaraIntentId {
-  const q = input.toLowerCase().trim();
-  for (const it of claraIntents) {
-    if (it.patterns.test(q)) return it.id;
-  }
-  return 'fora_de_escopo';
-}
-
-/* ─── Resposta da Clara por intent (consulta os dados reais do cliente) ──── */
-function buildReply(intent: ClaraIntentId, ctx: Ctx): string {
-  const pending = ctx.invoices.find((i) => i.status === 'pending');
-  const monthly = ctx.services.reduce((s, x) => s + x.amount, 0);
-  const br = (iso: string) => iso.split('-').reverse().join('/');
-
-  switch (intent) {
-    case 'saudacao':
-      return `Olá, ${ctx.name}! Eu sou a Clara, sua assistente Claro. Como posso te ajudar hoje?`;
-
-    case 'consultar_fatura':
-      return pending
-        ? `Sua fatura de ${pending.month} está aberta no valor de R$ ${fmtBRL(pending.amount)}, com vencimento em ${br(pending.dueDate)}. Quer pagar agora? Toque em "Faturas" no menu lateral ou diretamente no card escuro da Visão geral.`
-        : `Você está em dia — nenhuma fatura aberta no momento. 🎉`;
-
-    case 'segunda_via_fatura':
-      return pending
-        ? `Gerei a 2ª via da fatura de ${pending.month} (R$ ${fmtBRL(pending.amount)}). O link do boleto é válido por 24h. Quer que eu envie por e-mail ou WhatsApp?`
-        : `Não há fatura em aberto para gerar 2ª via. A última fatura já consta como paga. ✅`;
-
-    case 'consultar_plano':
-      return `Você está no Combo Multi com ${ctx.services.length} serviço(s): ${ctx.services.map((s) => s.label).join(', ')}. Total de R$ ${fmtBRL(monthly)}/mês. Quer ver os detalhes de algum serviço específico?`;
-
-    case 'alterar_plano':
-      return `Tenho ofertas elegíveis para você! Posso adicionar serviços como Claro Vídeo, hdtv ou Claro Fone ao seu combo (com desconto progressivo). Toque em "+ Adicionar plano" no painel de Serviços para ver as opções.`;
-
-    case 'status_servico': {
-      const net = ctx.services.find((s) => s.type === 'broadband');
-      return net
-        ? `Verifiquei sua ${net.label} ("${net.plan}"): detectei uma instabilidade localizada na fibra do seu bairro (incidente registrado). Já reiniciei seu equipamento remotamente — reparo previsto para hoje. Acompanhe o banner de status no topo da Visão geral.`
-        : `Consultei o status de rede da sua região: tudo operando normalmente. Se o problema persistir, posso te transferir para um técnico.`;
-    }
-
-    case 'solicitar_atendente':
-      return `Sem problema, ${ctx.name}. Vou te transferir para um especialista humano com TODO o histórico desta conversa — você não vai precisar repetir nada. Escolha o canal abaixo:`;
-
-    case 'despedida':
-      return `Por nada, ${ctx.name}! 😊 Qualquer coisa, é só me chamar de novo. Até mais!`;
-
-    case 'fora_de_escopo':
-    default:
-      return `Essa eu não consegui resolver sozinha 🤔. Posso te conectar com um atendente humano agora — ele recebe todo o contexto desta conversa. Quer que eu transfira?`;
-  }
-}
-
 const SUGGESTIONS = [
   'Qual o valor da minha fatura?',
   'Preciso da 2ª via do boleto',
@@ -103,9 +51,20 @@ export function ClaraChat({
   open, onClose, userName = 'cliente', services, invoices, clube,
   prefill, onPrefillConsumed,
 }: Props) {
-  const { logClaraInteraction, requestHandover } = useClaroContext();
-  const ctx = useMemo<Ctx>(() => ({ name: userName.split(' ')[0], services, invoices, clube }),
-    [userName, services, invoices, clube]);
+  const router = useRouter();
+  const {
+    logClaraInteraction, requestHandover,
+    session, startSession, appendSessionMessage, updateSessionContext,
+    claraConsent, acceptClaraConsent, activeIncidents,
+  } = useClaroContext();
+  const incidentNote = useMemo(() => {
+    const inc = activeIncidents.find((i) => i.servicos.includes('internet'));
+    return inc
+      ? `Detectei um incidente técnico ativo na sua região (${inc.regiao}): ${inc.titulo}. ${inc.previsao}. Protocolo ${inc.id} — a equipe técnica já está atuando. Você recebeu uma notificação e pode acompanhar pelo banner no topo da Visão Geral.`
+      : null;
+  }, [activeIncidents]);
+  const ctx = useMemo<Ctx>(() => ({ name: userName.split(' ')[0], services, invoices, clube, incidentNote }),
+    [userName, services, invoices, clube, incidentNote]);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -114,38 +73,67 @@ export function ClaraChat({
   const [handoverDone, setHandoverDone] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastReason = useRef<string>('Atendimento solicitado pelo cliente');
+  const inited = useRef(false);
 
+  /* ─── Sprint 3 §4 · abre/recupera a sessão vinculada ao cliente ───────────
+   * Se já há histórico de outro canal (ex.: WhatsApp), a Clara retoma o
+   * contexto em vez de cumprimentar do zero — o cliente não repete nada. */
   useEffect(() => {
-    if (open && messages.length === 0) {
-      setMessages([{
-        id: 'm-init', role: 'clara',
-        text: `Olá, ${ctx.name}! Eu sou a Clara, sua assistente Claro. Como posso te ajudar hoje?`,
-        ts: Date.now(),
-      }]);
-    }
-  }, [open, ctx.name, messages.length]);
+    if (!open || inited.current || !claraConsent) return;
+    inited.current = true;
+    let cancelled = false;
+    (async () => {
+      const sess = await startSession(CANAL).catch(() => null);
+      if (cancelled) return;
+      const prior = sess?.historico ?? [];
+
+      if (prior.length > 0) {
+        const hydrated: Message[] = prior
+          .filter((m) => m.role === 'user' || m.role === 'clara')
+          .map((m) => ({ id: m.id, role: m.role as 'user' | 'clara', text: m.text, ts: m.ts }));
+        const outraOrigem = (sess?.canalOrigem ?? 'web') !== 'web';
+        if (outraOrigem) {
+          const text = resumeLine(ctx.name, sess?.contextoAtual.lastIntent ?? null, sess?.canalOrigem ?? 'web');
+          setMessages([...hydrated, { id: 'm-resume', role: 'clara', text, ts: Date.now() }]);
+          appendSessionMessage({ role: 'clara', text, canal: CANAL });
+        } else {
+          setMessages(hydrated);
+        }
+        return;
+      }
+
+      const greet = `Olá, ${ctx.name}! Eu sou a Clara, sua assistente Claro. Como posso te ajudar hoje?`;
+      setMessages([{ id: 'm-init', role: 'clara', text: greet, ts: Date.now() }]);
+      appendSessionMessage({ role: 'clara', text: greet, canal: CANAL });
+    })();
+    return () => { cancelled = true; };
+  }, [open, claraConsent, ctx.name, startSession, appendSessionMessage]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, typing, handoverOpen, handoverDone]);
 
-  const send = (text?: string) => {
+  const send = async (text?: string) => {
     const content = (text ?? input).trim();
     if (!content) return;
 
-    const intent = classifyIntent(content);
-    const intentDef = claraIntents.find((i) => i.id === intent);
-    const resolvedAuto = intentDef?.resolvedAuto ?? false;
-
     setMessages((m) => [...m, { id: 'u-' + Date.now(), role: 'user', text: content, ts: Date.now() }]);
+    appendSessionMessage({ role: 'user', text: content, canal: CANAL });
     setInput('');
     setTyping(true);
 
-    const delay = 700 + Math.min(content.length * 22, 1300);
+    const sid = session?.sessionId ?? 'web-anon';
+    const { intent, entities, resolvedAuto } = await detectIntent(content, sid);
+
+    const delay = 500 + Math.min(content.length * 22, 1100);
     setTimeout(() => {
       const reply = buildReply(intent, ctx);
       setMessages((m) => [...m, { id: 'c-' + Date.now(), role: 'clara', text: reply, ts: Date.now() }]);
       setTyping(false);
+
+      /* Sprint 3 §4.1 — persiste mensagem + contexto_atual na sessão */
+      appendSessionMessage({ role: 'clara', text: reply, canal: CANAL });
+      updateSessionContext({ lastIntent: intent, entities, summary: `${intentLabel(intent)} (via ${CANAL})` });
 
       /* Sprint 2 §4.1 — registra métrica de autoatendimento */
       logClaraInteraction(intent, resolvedAuto);
@@ -162,28 +150,40 @@ export function ClaraChat({
 
   useEffect(() => {
     if (open && prefill && messages.length <= 1) {
-      const t = setTimeout(() => { send(prefill); onPrefillConsumed?.(); }, 400);
+      const t = setTimeout(() => { void send(prefill); onPrefillConsumed?.(); }, 400);
       return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, prefill]);
 
-  const confirmHandover = () => {
+  const confirmHandover = (channelId: string) => {
     requestHandover({
       reason: lastReason.current,
+      canal: CANAL,
       history: messages.map((m) => ({ role: m.role, text: m.text })),
     });
     setHandoverOpen(false);
     setHandoverDone(true);
-    setMessages((m) => [...m, {
-      id: 'h-' + Date.now(), role: 'clara',
-      text: 'Pronto! Você entrou na fila de atendimento humano e o especialista já recebeu todo o histórico desta conversa. Pode aguardar aqui mesmo — não vai precisar repetir nada. 🤝',
-      ts: Date.now(),
-    }]);
+
+    if (channelId === 'fone') {
+      window.location.assign('tel:106');
+      return;
+    }
+    if (channelId === 'wpp') {
+      const text = 'Perfeito! Estou te levando para o WhatsApp da Claro com todo o histórico — é só continuar por lá.';
+      setMessages((m) => [...m, { id: 'h-' + Date.now(), role: 'clara', text, ts: Date.now() }]);
+      appendSessionMessage({ role: 'clara', text, canal: CANAL });
+      onClose();
+      router.push('/whatsapp');
+      return;
+    }
+    const text = 'Pronto! Você entrou na fila de atendimento humano e o especialista já recebeu todo o histórico desta conversa. Pode aguardar aqui mesmo — não vai precisar repetir nada. 🤝';
+    setMessages((m) => [...m, { id: 'h-' + Date.now(), role: 'clara', text, ts: Date.now() }]);
+    appendSessionMessage({ role: 'clara', text, canal: CANAL });
   };
 
   const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
   };
 
   if (!open) return null;
@@ -209,6 +209,33 @@ export function ClaraChat({
         </button>
       </div>
 
+      {/* §7 · Consentimento LGPD no 1º acesso ao chat */}
+      {!claraConsent ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center bg-warm-50 dark:bg-warm-900/40">
+          <div className="w-14 h-14 rounded-2xl bg-claro-soft dark:bg-claro/15 flex items-center justify-center">
+            <ShieldCheck size={26} className="text-claro" />
+          </div>
+          <div>
+            <p className="text-sm font-black text-warm-900 dark:text-warm-50">Antes de começar</p>
+            <p className="text-[12px] text-warm-500 mt-1.5 leading-relaxed">
+              Sua conversa com a Clara é <b>registrada</b> e vinculada à sua conta para dar
+              continuidade ao atendimento em qualquer canal. Os dados são tratados conforme a
+              <b> LGPD (Lei 13.709/2018)</b> e você pode exportar ou excluir esse histórico a
+              qualquer momento em <b>Configurações › Privacidade</b>.
+            </p>
+          </div>
+          <button
+            onClick={acceptClaraConsent}
+            className="w-full max-w-[280px] bg-claro text-white font-bold rounded-xl py-3 text-sm hover:bg-claro-dark transition-colors flex items-center justify-center gap-2"
+          >
+            <CheckCircle2 size={15} /> Aceito e quero continuar
+          </button>
+          <p className="text-[10px] text-warm-400 flex items-center gap-1">
+            <Lock size={10} /> Comunicação via HTTPS · dados sensíveis criptografados
+          </p>
+        </div>
+      ) : (
+      <>
       {/* Mensagens */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-warm-50 dark:bg-warm-900/40">
         {messages.map((m) => (
@@ -248,7 +275,7 @@ export function ClaraChat({
                 return (
                   <button
                     key={c.id}
-                    onClick={confirmHandover}
+                    onClick={() => confirmHandover(c.id)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-warm-200/70 dark:border-warm-600 hover:border-claro hover:bg-claro-soft dark:hover:bg-claro/10 transition-colors text-left"
                   >
                     <div className="w-8 h-8 rounded-lg bg-warm-100 dark:bg-warm-600 flex items-center justify-center shrink-0">
@@ -279,7 +306,7 @@ export function ClaraChat({
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
-                onClick={() => send(s)}
+                onClick={() => void send(s)}
                 className="block w-full text-left text-[12px] px-3 py-2 rounded-xl bg-white dark:bg-warm-700 border border-warm-200/70 dark:border-warm-600 text-warm-700 dark:text-warm-200 hover:border-claro hover:text-claro transition-colors"
               >
                 {s}
@@ -291,7 +318,7 @@ export function ClaraChat({
 
       {/* Input */}
       <form
-        onSubmit={(e) => { e.preventDefault(); send(); }}
+        onSubmit={(e) => { e.preventDefault(); void send(); }}
         className="border-t border-warm-100 dark:border-warm-700 p-3 flex items-center gap-2 bg-white dark:bg-warm-800"
       >
         <input
@@ -311,6 +338,8 @@ export function ClaraChat({
           <Send size={16} />
         </button>
       </form>
+      </>
+      )}
     </div>
   );
 }

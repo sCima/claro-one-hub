@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Menu, Search, Sun, Moon, Bell, ChevronDown, Plus, LogOut, X, ShieldCheck,
+  Menu, Search, Sun, Moon, Bell, ChevronDown, Plus, LogOut, X, ShieldCheck, MessageSquare,
 } from 'lucide-react';
 import { useClaroContext } from '../../context/ClaroContext';
 import { SearchResults } from './widgets/SearchResults';
@@ -65,7 +65,7 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
       </button>
 
       {/* Account switcher */}
-      <div className="relative" data-tour="switcher">
+      <div className="relative shrink-0" data-tour="switcher">
         <button
           onClick={() => { setAcctOpen((v) => !v); setNotifOpen(false); setProfileOpen(false); }}
           className="flex items-center gap-2.5 pl-1 pr-3 py-1 rounded-full hover:bg-warm-100 dark:hover:bg-warm-700 transition-colors"
@@ -118,8 +118,8 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
         )}
       </div>
 
-      {/* Search */}
-      <div className="relative hidden md:flex flex-1 max-w-md" data-tour="search">
+      {/* Search — ocupa toda a largura disponível entre a conta e os ícones */}
+      <div className="relative hidden md:flex flex-1 min-w-0" data-tour="search">
         <div
           className={cx(
             'flex items-center gap-2 w-full transition-colors rounded-full pl-4 pr-3 py-2.5',
@@ -163,7 +163,11 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
         )}
       </div>
 
-      <div className="flex-1 md:flex-none" />
+      {/* Empurra os ícones para a direita quando a busca está oculta (mobile) */}
+      <div className="flex-1 md:hidden" />
+
+      {/* Cluster de ações — agrupado à direita */}
+      <div className="flex items-center gap-2 shrink-0">
 
       {/* Dark mode toggle */}
       <button
@@ -253,6 +257,15 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
               </div>
             </div>
             <button
+              onClick={() => { setProfileOpen(false); router.push('/whatsapp'); }}
+              className="w-full flex items-center gap-2.5 px-5 py-3 text-sm text-warm-600 dark:text-warm-200 hover:bg-warm-50 dark:hover:bg-warm-700 hover:text-claro border-b border-warm-100 dark:border-warm-700"
+            >
+              <MessageSquare size={16} /> Canal WhatsApp
+              <span className="ml-auto text-[9px] font-bold uppercase tracking-wider bg-warm-100 dark:bg-warm-700 text-warm-500 rounded-full px-2 py-0.5">
+                Simulação
+              </span>
+            </button>
+            <button
               onClick={() => { setProfileOpen(false); router.push('/admin'); }}
               className="w-full flex items-center gap-2.5 px-5 py-3 text-sm text-warm-600 dark:text-warm-200 hover:bg-warm-50 dark:hover:bg-warm-700 hover:text-claro border-b border-warm-100 dark:border-warm-700"
             >
@@ -269,6 +282,8 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
             </button>
           </div>
         )}
+      </div>
+
       </div>
     </header>
   );

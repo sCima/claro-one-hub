@@ -114,6 +114,9 @@ body {
   to   { opacity: 1; transform: translateY(0);   }
 }
 
+/* ─── VLibras (RF007) — afasta o botão de acesso do FAB da Clara ─── */
+[vw-access-button] { bottom: 96px !important; right: 16px !important; }
+
 /* ─── Typing dots for Clara ─── */
 .typing-dot {
   display: inline-block;

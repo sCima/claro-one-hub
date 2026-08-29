@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { MessageCircle, MessageSquare, Phone, ShoppingBag, ChevronDown } from 'lucide-react';
 import { useClaroContext } from '../../../context/ClaroContext';
 import { faqs } from '../../../data/mockData';
@@ -13,6 +14,14 @@ type ChannelIconName = keyof typeof CHANNEL_ICONS;
 export function SupportPage() {
   const { supportChannels } = useClaroContext();
   const [open, setOpen] = useState<number>(-1);
+  const router = useRouter();
+
+  const startChannel = (label: string) => {
+    if (/whatsapp/i.test(label)) { router.push('/whatsapp'); return; }
+    if (/106|ligar/i.test(label)) { window.location.assign('tel:106'); return; }
+    if (/loja/i.test(label)) { window.open('https://www.claro.com.br', '_blank', 'noopener'); return; }
+    window.dispatchEvent(new CustomEvent('onehub:open-clara')); // Chat Online → abre a Clara
+  };
 
   return (
     <div className="space-y-6">
@@ -54,7 +63,10 @@ export function SupportPage() {
                   {ch.available ? 'Disponível' : 'Indisponível'}
                 </span>
               </div>
-              <button className="w-full text-xs font-bold rounded-full py-2.5 bg-warm-900 text-white hover:bg-claro dark:bg-warm-50 dark:text-warm-900 dark:hover:bg-claro dark:hover:text-white transition-colors">
+              <button
+                onClick={() => startChannel(ch.label)}
+                className="w-full text-xs font-bold rounded-full py-2.5 bg-warm-900 text-white hover:bg-claro dark:bg-warm-50 dark:text-warm-900 dark:hover:bg-claro dark:hover:text-white transition-colors"
+              >
                 Iniciar
               </button>
             </div>

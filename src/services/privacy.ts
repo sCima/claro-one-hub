@@ -1,0 +1,82 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * One Hub · LGPD — consentimento e direito de exclusão (§7)
+ *
+ * - Consentimento explícito no 1º acesso ao chat da Clara (registro da conversa).
+ * - Portabilidade: o titular pode exportar seus dados de conversa.
+ * - Exclusão: endpoint dedicado para apagar o histórico a pedido do titular.
+ *
+ * Modo mock → consentimento e exclusão operam sobre o localStorage.
+ * Modo api  → /privacy/consent e /privacy/erasure no backend.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+import { backendConfig, isApiMode } from '../config/backend';
+import type { Session } from './session';
+
+const CONSENT_KEY = backendConfig.privacy.consentStorageKey;
+
+export interface ConsentRecord {
+  granted: boolean;
+  scope: 'clara-chat';
+  ts: number;
+  baseLegal: string;
+}
+
+export function readConsent(): ConsentRecord | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(CONSENT_KEY);
+    return raw ? (JSON.parse(raw) as ConsentRecord) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function grantConsent(): Promise<ConsentRecord> {
+  const record: ConsentRecord = {
+    granted: true,
+    scope: 'clara-chat',
+    ts: Date.now(),
+    baseLegal: backendConfig.privacy.baseLegal,
+  };
+  if (isApiMode && backendConfig.privacy.endpoint) {
+    await fetch(`${backendConfig.privacy.endpoint}/privacy/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record),
+    }).catch(() => {});
+  }
+  try { window.localStorage.setItem(CONSENT_KEY, JSON.stringify(record)); } catch {}
+  return record;
+}
+
+export async function revokeConsent(): Promise<void> {
+  if (isApiMode && backendConfig.privacy.endpoint) {
+    await fetch(`${backendConfig.privacy.endpoint}/privacy/consent`, { method: 'DELETE' }).catch(() => {});
+  }
+  try { window.localStorage.removeItem(CONSENT_KEY); } catch {}
+}
+
+/** Portabilidade — pacote com os dados de conversa do titular. */
+export function buildDataExport(session: Session | null): string {
+  const payload = {
+    geradoEm: new Date().toISOString(),
+    baseLegal: backendConfig.privacy.baseLegal,
+    consentimento: readConsent(),
+    sessao: session,
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+/** Direito de exclusão — apaga o histórico de conversas do titular. */
+export async function requestErasure(sessionId?: string): Promise<void> {
+  if (isApiMode && backendConfig.privacy.endpoint) {
+    await fetch(`${backendConfig.privacy.endpoint}/privacy/erasure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    }).catch(() => {});
+  }
+  try {
+    window.localStorage.removeItem(backendConfig.session.localStorageKey);
+  } catch {}
+}

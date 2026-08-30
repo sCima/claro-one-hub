@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Menu, Search, Sun, Moon, Bell, ChevronDown, Plus, LogOut, X, ShieldCheck, MessageSquare,
+  Menu, Search, Sun, Moon, Bell, ChevronDown, Plus, LogOut, X, ShieldCheck, MessageSquare, Smartphone,
 } from 'lucide-react';
 import { useClaroContext } from '../../context/ClaroContext';
 import { SearchResults } from './widgets/SearchResults';
@@ -23,6 +23,7 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
     activeUser, user, accounts, notifications, dark,
     services, invoices, clube,
     searchQuery, switchAccount, toggleDark, setSearchQuery,
+    markNotificationRead, markAllNotificationsRead,
   } = useClaroContext();
   const profile = activeUser ?? user;
   const [searchFocus, setSearchFocus] = useState(false);
@@ -201,13 +202,20 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
 
         {notifOpen && (
           <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-warm-800 border border-warm-200/70 dark:border-warm-700 rounded-2xl shadow-2xl overflow-hidden anim-in">
-            <div className="px-5 py-4 border-b border-warm-100 dark:border-warm-700 flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-warm-100 dark:border-warm-700 flex items-center justify-between gap-2">
               <p className="text-sm font-bold">Notificações</p>
-              <span className="text-[10px] font-bold bg-claro text-white px-2 py-0.5 rounded-full">
-                {unread} novas
-              </span>
+              {unread > 0 ? (
+                <button onClick={markAllNotificationsRead} className="text-[10px] font-bold text-claro hover:underline">
+                  Marcar todas como lidas
+                </button>
+              ) : (
+                <span className="text-[10px] font-bold text-warm-400">Tudo em dia</span>
+              )}
             </div>
             <ul className="max-h-72 overflow-y-auto">
+              {notifications.length === 0 && (
+                <li className="px-5 py-8 text-center text-[12px] text-warm-400">Nenhuma notificação.</li>
+              )}
               {notifications.map((n) => (
                 <li
                   key={n.id}
@@ -223,10 +231,18 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
                       n.level === 'promo' ? 'bg-green-500'  : 'bg-claro',
                     )}
                   />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p className="text-xs text-warm-800 dark:text-warm-100 leading-snug">{n.title}</p>
                     <p className="text-[10px] text-warm-400 mt-1">{n.time}</p>
                   </div>
+                  {n.unread && (
+                    <button
+                      onClick={() => markNotificationRead(n.id)}
+                      className="text-[9px] font-bold text-warm-400 hover:text-claro shrink-0 mt-0.5"
+                    >
+                      marcar lida
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -261,6 +277,15 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
               className="w-full flex items-center gap-2.5 px-5 py-3 text-sm text-warm-600 dark:text-warm-200 hover:bg-warm-50 dark:hover:bg-warm-700 hover:text-claro border-b border-warm-100 dark:border-warm-700"
             >
               <MessageSquare size={16} /> Canal WhatsApp
+              <span className="ml-auto text-[9px] font-bold uppercase tracking-wider bg-warm-100 dark:bg-warm-700 text-warm-500 rounded-full px-2 py-0.5">
+                Simulação
+              </span>
+            </button>
+            <button
+              onClick={() => { setProfileOpen(false); router.push('/app'); }}
+              className="w-full flex items-center gap-2.5 px-5 py-3 text-sm text-warm-600 dark:text-warm-200 hover:bg-warm-50 dark:hover:bg-warm-700 hover:text-claro border-b border-warm-100 dark:border-warm-700"
+            >
+              <Smartphone size={16} /> Canal App
               <span className="ml-auto text-[9px] font-bold uppercase tracking-wider bg-warm-100 dark:bg-warm-700 text-warm-500 rounded-full px-2 py-0.5">
                 Simulação
               </span>

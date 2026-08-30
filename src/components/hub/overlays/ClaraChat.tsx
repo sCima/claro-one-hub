@@ -9,7 +9,7 @@ import {
 import type { Service, Invoice, ClubeData } from '../../../data/mockData';
 import { useClaroContext } from '../../../context/ClaroContext';
 import { detectIntent, intentLabel } from '../../../services/claraNlu';
-import { buildReply, resumeLine, type ClaraContext as Ctx } from '../../../services/claraReply';
+import { buildReply, replyActions, resumeLine, type ClaraContext as Ctx, type ClaraAction } from '../../../services/claraReply';
 import type { Canal } from '../../../services/session';
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
@@ -21,6 +21,7 @@ interface Message {
   role: 'user' | 'clara';
   text: string;
   ts: number;
+  actions?: ClaraAction[];
 }
 
 interface Props {
@@ -102,11 +103,14 @@ export function ClaraChat({
         return;
       }
 
-      const greet = `Olá, ${ctx.name}! Eu sou a Clara, sua assistente Claro. Como posso te ajudar hoje?`;
+      const greet = incidentNote
+        ? `Olá, ${ctx.name}! Antes de mais nada: ${incidentNote} Posso ajudar em mais alguma coisa?`
+        : `Olá, ${ctx.name}! Eu sou a Clara, sua assistente Claro. Como posso te ajudar hoje?`;
       setMessages([{ id: 'm-init', role: 'clara', text: greet, ts: Date.now() }]);
       appendSessionMessage({ role: 'clara', text: greet, canal: CANAL });
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, claraConsent, ctx.name, startSession, appendSessionMessage]);
 
   useEffect(() => {
@@ -128,7 +132,8 @@ export function ClaraChat({
     const delay = 500 + Math.min(content.length * 22, 1100);
     setTimeout(() => {
       const reply = buildReply(intent, ctx);
-      setMessages((m) => [...m, { id: 'c-' + Date.now(), role: 'clara', text: reply, ts: Date.now() }]);
+      const actions = replyActions(intent, ctx);
+      setMessages((m) => [...m, { id: 'c-' + Date.now(), role: 'clara', text: reply, ts: Date.now(), actions }]);
       setTyping(false);
 
       /* Sprint 3 §4.1 — persiste mensagem + contexto_atual na sessão */
@@ -186,6 +191,14 @@ export function ClaraChat({
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
   };
 
+  /* RNF002 — a Clara conduz o usuário até a solução */
+  const runAction = (a: ClaraAction) => {
+    window.dispatchEvent(new CustomEvent(a.event, { detail: a.detail }));
+    if (a.event === 'onehub:navigate' || a.event === 'onehub:open-store' || a.event === 'onehub:pay') {
+      onClose();
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -237,9 +250,9 @@ export function ClaraChat({
       ) : (
       <>
       {/* Mensagens */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-warm-50 dark:bg-warm-900/40">
+      <div ref={scrollRef} role="log" aria-live="polite" aria-label="Conversa com a Clara" className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-warm-50 dark:bg-warm-900/40">
         {messages.map((m) => (
-          <div key={m.id} className={cx('flex bubble-in', m.role === 'user' ? 'justify-end' : 'justify-start')}>
+          <div key={m.id} className={cx('flex flex-col bubble-in', m.role === 'user' ? 'items-end' : 'items-start')}>
             <div
               className={cx(
                 'max-w-[85%] px-3.5 py-2.5 text-[13px] leading-relaxed',
@@ -250,6 +263,19 @@ export function ClaraChat({
             >
               {m.text}
             </div>
+            {m.actions && m.actions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5 max-w-[85%]">
+                {m.actions.map((a) => (
+                  <button
+                    key={a.label}
+                    onClick={() => runAction(a)}
+                    className="text-[12px] font-bold rounded-full px-3 py-1.5 bg-claro-soft dark:bg-claro/15 text-claro border border-claro/25 hover:bg-claro hover:text-white transition-colors inline-flex items-center gap-1"
+                  >
+                    {a.label} <ArrowRight size={11} />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ))}
 

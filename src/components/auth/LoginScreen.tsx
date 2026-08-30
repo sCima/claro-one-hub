@@ -6,7 +6,7 @@
  * login do ADMINISTRADOR (One Hub Admin) na própria tela.
  * ───────────────────────────────────────────────────────────────────────────── */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -22,8 +22,15 @@ type Mode = 'cliente' | 'admin';
 
 export function LoginScreen() {
   const router = useRouter();
-  const { login, adminLogin } = useClaroContext();
+  const { login, adminLogin, isLoggedIn, authResolved, adminRole } = useClaroContext();
   const [mode, setMode] = useState<Mode>('cliente');
+
+  /* Já autenticado? Vai direto para o destino, sem mostrar o formulário. */
+  useEffect(() => {
+    if (!authResolved) return;
+    if (isLoggedIn) router.replace('/hub');
+    else if (adminRole) router.replace('/admin');
+  }, [authResolved, isLoggedIn, adminRole, router]);
 
   /* cliente */
   const [cId, setCId] = useState(mockUser.email);

@@ -199,6 +199,20 @@ export const claraIntents = [
 
 export type ClaraIntentId = typeof claraIntents[number]['id'] | 'fora_de_escopo';
 
+/* Intenção da Clara → categoria/prioridade do ticket de handover (§4.2).
+ * Evita abrir todo chamado como "Dúvida Geral". */
+export const INTENT_TO_TICKET: Record<ClaraIntentId, { category: string; priority: 'alta' | 'media' | 'baixa' }> = {
+  saudacao:           { category: 'Dúvida Geral',       priority: 'baixa' },
+  consultar_fatura:   { category: 'Faturamento',        priority: 'media' },
+  segunda_via_fatura: { category: 'Faturamento',        priority: 'media' },
+  consultar_plano:    { category: 'Comercial / Vendas', priority: 'baixa' },
+  alterar_plano:      { category: 'Comercial / Vendas', priority: 'baixa' },
+  status_servico:     { category: 'Incidente de Rede',  priority: 'alta'  },
+  solicitar_atendente:{ category: 'Dúvida Geral',       priority: 'media' },
+  despedida:          { category: 'Dúvida Geral',       priority: 'baixa' },
+  fora_de_escopo:     { category: 'Dúvida Geral',       priority: 'media' },
+};
+
 /* ─── One Hub Admin · ITSM / Service Desk (Sprint 2 §4.4) ─────────────────── */
 export type AdminChannel  = 'whatsapp' | 'portal' | 'app';
 export type AdminPriority = 'alta' | 'media' | 'baixa';
@@ -552,6 +566,7 @@ export type QueueItem         = typeof mockAttendanceQueue[number] & {
   firstResponseMins?: number;
   resolvedDaysAgo?: number;
   csat?: number;
+  anonymized?: boolean;
 };
 export type ResolvedTicket    = typeof mockResolvedTickets[number];
 export type TicketTrendPoint  = typeof mockTicketTrend[number];

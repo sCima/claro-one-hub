@@ -50,6 +50,24 @@ interface Session {
 *Configurações › Sessão e segurança* exibe `session_id`, `canal_origem`,
 `contexto_atual`, expiração do token e os canais já usados na sessão.
 
+## Persistência entre recarregamentos (F5)
+
+O estado sobrevive ao reload sem voltar para `/login`:
+
+| Chave `localStorage` | Conteúdo |
+|---|---|
+| `onehub.token` | JWT — enquanto válido (30 min), o cliente continua logado |
+| `onehub.session` | objeto `Session` (histórico da conversa, contexto) |
+| `onehub.clientState` | pontos do Clube por conta, faturas pagas, serviços adicionados, conta ativa, tema |
+| `onehub.lgpd.consent` | consentimento LGPD |
+| `onehub.incidents` | incidentes técnicos (RF006) |
+| `onehub.admin` | papel do admin logado (RBAC) |
+
+Ao abrir `/hub`, o app espera a checagem do token (`authResolved`) antes de
+decidir entre renderizar o portal ou redirecionar — não há flicker para a tela
+de login. `Sair da conta` limpa `onehub.token`, `onehub.session` e
+`onehub.clientState`.
+
 ## Ligando o backend real
 
 Preencher `.env.local` (ver `.env.example`) e definir `NEXT_PUBLIC_BACKEND_MODE=api`.
@@ -105,3 +123,47 @@ Endpoints esperados do backend:
   oficial `vlibras.gov.br` no layout raiz (`next/script`, `afterInteractive`).
 - Botão de acesso reposicionado via CSS para não colidir com o FAB da Clara.
 - Certificação completa da integração permanece como próximo passo (§10).
+
+---
+
+# Complemento 2 — Comunicação em destaque (hub de canais)
+
+O objetivo do produto é **integrar os canais de suporte com a sessão viva**. Estas
+mudanças trazem a comunicação para o primeiro plano.
+
+## Central de Atendimento
+
+- **Card em destaque na Visão Geral** ([`SupportHubCard`](../src/components/hub/widgets/SupportHubCard.tsx)):
+  reúne conversa ativa (com o assunto do `contexto_atual` e "Retomar"), status do
+  chamado aberto e **todos os canais** (Clara · WhatsApp · 106 · Meu Atendimento).
+- **Tela "Meu Atendimento"** ([`AtendimentoPage`](../src/components/hub/pages/AtendimentoPage.tsx),
+  item novo na sidebar, grupo *Geral*):
+  - canais de contato em destaque no topo
+  - **status do chamado** em etapas: Clara → Fila → Atendente → Resolvido
+  - **CSAT** (1–5) ao resolver, que alimenta o painel do Admin
+  - **conversa contínua** com a linha do tempo dos canais ("Web Chat → WhatsApp → Atendente")
+- **Banner persistente "conversa/atendimento em andamento"**
+  ([`ActiveConversationBanner`](../src/components/hub/widgets/ActiveConversationBanner.tsx))
+  em todas as telas do hub, com "Retomar" / "Acompanhar".
+
+## Contexto mais profundo
+
+- **Handover herda categoria e prioridade do intent** (`INTENT_TO_TICKET` em
+  [mockData](../src/data/mockData.ts)) — não abre mais tudo como "Dúvida Geral";
+  o prefixo do protocolo também segue (`INC-` para rede, `REQ-` para o resto).
+- **CSAT do cliente** (`submitCsat`) grava no ticket `Q-SELF` e entra na auditoria.
+- `myTicket` no contexto expõe o chamado do próprio cliente para a visão dele.
+
+## Clara guiada (RNF002)
+
+- As respostas da Clara agora trazem **botões de ação** (`replyActions` em
+  [claraReply](../src/services/claraReply.ts)): "Ver faturas", "Pagar agora",
+  "Ver planos disponíveis", "Acompanhar atendimento" — despacham `CustomEvent`s
+  que o Dashboard executa (`onehub:navigate`, `onehub:pay`, `onehub:open-store`).
+
+## Notificação proativa mais precisa (RF006)
+
+- O incidente só notifica o cliente **se ele tiver o serviço afetado**
+  (mapeamento serviço-do-incidente → tipo-do-serviço-do-cliente).
+- A Clara **avisa do incidente ativo já na saudação** quando o serviço do cliente
+  está fora.

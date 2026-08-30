@@ -7,7 +7,7 @@ import {
   type Session, type Canal, type SessionMessage,
 } from '../services/session';
 import {
-  issueToken, verifyToken, secondsUntilExpiry,
+  issueToken, verifyToken, secondsUntilExpiry, isExpired,
   type TokenPayload,
 } from '../services/authToken';
 import { backendConfig } from '../config/backend';
@@ -20,7 +20,7 @@ import {
 } from '../services/privacy';
 import {
   mockUser, mockAccounts, accountProfiles, mockAttendanceQueue, mockResolvedTickets,
-  ADMIN_USERS, SLA_TARGET, INCIDENT_SEVERITY,
+  ADMIN_USERS, SLA_TARGET, INCIDENT_SEVERITY, INTENT_TO_TICKET,
   type Service, type Invoice, type DataPoint, type SupportChannel,
   type Activity, type Notification, type Recommendation, type Account,
   type ClubeData, type ClubeReward, type AvailablePlan,
@@ -71,11 +71,15 @@ interface ClaroState {
   searchQuery: string;
   loading: boolean;
   isLoggedIn: boolean;
+  /** false até o app terminar de checar se há sessão salva (evita flicker p/ /login) */
+  authResolved: boolean;
   login: () => Promise<void>;
   logout: () => void;
   switchAccount: (id: string) => void;
   toggleDark: () => void;
   setSearchQuery: (q: string) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
   confirmPayment: (invoice: Invoice) => void;
   confirmRedeem: (reward: ClubeReward) => void;
   addPlanToCombo: (plan: AvailablePlan) => void;
@@ -110,6 +114,9 @@ interface ClaroState {
   requestHandover: (payload: HandoverPayload) => void;
   resolveQueueItem: (id: string) => void;
   updateTicketStatus: (id: string, status: TicketStatus) => void;
+  /* ─── Atendimento do próprio cliente (visão do usuário) ─── */
+  myTicket: QueueItem | null;
+  submitCsat: (score: number) => void;
   /* ─── One Hub Admin · RBAC (acesso restrito por papel) ─── */
   adminRole: AdminRole | null;
   adminName: string | null;
@@ -121,9 +128,45 @@ interface ClaroState {
   /* ISO 27001 · trilha de auditoria + LGPD · anonimização */
   auditLog: AuditEntry[];
   anonymizeTicket: (id: string) => void;
+  deanonymizeTicket: (id: string) => void;
 }
 
 const ClaroContext = createContext<ClaroState | null>(null);
+
+/* Serviço afetado (incidente) → tipo do serviço do cliente */
+const SERVICO_TO_TYPE: Record<string, string> = {
+  internet: 'broadband', tv: 'tv', telefonia: 'fixo', movel: 'mobile',
+};
+
+/* ─── Persistência do estado mutável do cliente (sobrevive ao reload) ─────────
+ * A sessão de conversa fica em `onehub.session`; aqui guardamos o que o cliente
+ * mudou no portal: pontos do Clube, faturas pagas, serviços adicionados, conta
+ * ativa e tema. */
+const CLIENT_STATE_KEY = 'onehub.clientState';
+
+interface ClientState {
+  dark?: boolean;
+  activeAccountId?: string;
+  pointsByAccount?: Record<string, number>;
+  paidInvoiceIds?: string[];
+  extraServices?: Service[];
+  extraServiceIds?: Record<string, string[]>;
+  extraActivity?: Activity[];
+}
+
+function readClientState(): ClientState {
+  if (typeof window === 'undefined') return {};
+  try { return JSON.parse(window.localStorage.getItem(CLIENT_STATE_KEY) || '{}') as ClientState; }
+  catch { return {}; }
+}
+function writeClientState(s: ClientState): void {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(CLIENT_STATE_KEY, JSON.stringify(s)); } catch {}
+}
+function clearClientState(): void {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.removeItem(CLIENT_STATE_KEY); } catch {}
+}
 
 export function ClaroProvider({ children }: { children: ReactNode }) {
   const [user, setUser]                   = useState<User | null>(null);
@@ -140,6 +183,7 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
   const [searchQuery, setSearchQuery]     = useState('');
   const [loading, setLoading]             = useState(false);
   const [isLoggedIn, setIsLoggedIn]       = useState(false);
+  const [authResolved, setAuthResolved]  = useState(false);
   /* Serviços adicionais por conta (criados via addPlanToCombo) */
   const [extraServiceIds, setExtraServiceIds] = useState<Record<string, string[]>>({});
   /* Sprint 2 — métricas da Clara + fila de atendimento omnichannel */
@@ -151,6 +195,11 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
   const [adminName, setAdminName]         = useState<string | null>(null);
   const [slaConfig, setSlaConfig]         = useState<Record<AdminPriority, number>>({ ...SLA_TARGET });
   const [auditLog, setAuditLog]           = useState<AuditEntry[]>([]);
+  /* pontos do Clube por conta (base = accountProfiles, ajustado por pagamento/resgate) */
+  const [pointsByAccount, setPointsByAccount] = useState<Record<string, number>>({});
+  /* originais guardados antes da anonimização LGPD (para permitir reverter) */
+  const [anonOriginals, setAnonOriginals] = useState<Record<string, Pick<QueueItem, 'name' | 'initials' | 'cpf' | 'claraHistory'>>>({});
+  const clientStateHydrated = useRef(false);
   /* Sprint 3 §4 — sessão/contexto entre canais + token de autenticação */
   const [session, setSession]             = useState<Session | null>(null);
   const [sessionToken, setSessionToken]   = useState<string | null>(null);
@@ -158,6 +207,8 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
   const [sessionSecondsLeft, setSecondsLeft]   = useState(0);
   const sessionRef = useRef<Session | null>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
+  const queueRef = useRef<QueueItem[]>(attendanceQueue);
+  useEffect(() => { queueRef.current = attendanceQueue; }, [attendanceQueue]);
   /* §7 · LGPD — consentimento do chat da Clara */
   const [claraConsent, setClaraConsent] = useState<ConsentRecord | null>(null);
   /* RF006 · incidentes técnicos */
@@ -236,10 +287,20 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
     [rawInvoices, profile.invoiceMultiplier]
   );
 
+  /* pontos vigentes da conta ativa: valor persistido, senão a base do perfil */
+  const activePoints = pointsByAccount[activeAccount.id] ?? profile.clubePoints;
+
   const clube = useMemo<ClubeData | null>(() => {
     if (!rawClube) return null;
-    return { ...rawClube, points: profile.clubePoints, tier: profile.tier as ClubeData['tier'] };
-  }, [rawClube, profile.clubePoints, profile.tier]);
+    return { ...rawClube, points: activePoints, tier: profile.tier as ClubeData['tier'] };
+  }, [rawClube, activePoints, profile.tier]);
+
+  const adjustPoints = useCallback((delta: number) => {
+    setPointsByAccount((prev) => {
+      const base = prev[activeAccount.id] ?? profile.clubePoints;
+      return { ...prev, [activeAccount.id]: Math.max(0, Math.round(base + delta)) };
+    });
+  }, [activeAccount.id, profile.clubePoints]);
 
   const activeUser = useMemo<User | null>(() => {
     if (!user) return null;
@@ -272,6 +333,13 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleDark = useCallback(() => setDarkState((d) => !d), []);
+
+  const markNotificationRead = useCallback((id: string) => {
+    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, unread: false } : n));
+  }, []);
+  const markAllNotificationsRead = useCallback(() => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+  }, []);
 
   /* ─── Sprint 3 §4 · Sessão vinculada ao cliente (não ao canal) ─────────────
    * Recupera a sessão ativa (loadSession) ou cria uma nova, e (re)emite o token
@@ -347,7 +415,11 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
     setSessionToken(null);
     setTokenPayload(null);
     try { window.localStorage.removeItem(backendConfig.auth.localStorageKey); } catch {}
-  }, []);
+    /* LGPD consistente: remove também o chamado do titular no Service Desk */
+    setQueue((prev) => prev.filter((q) => q.id !== 'Q-SELF'));
+    setAnonOriginals((o) => { const n = { ...o }; delete n['Q-SELF']; return n; });
+    pushAudit('cliente', 'dados.excluidos', 'LGPD art. 18: histórico de conversas e chamado do titular removidos');
+  }, [pushAudit]);
 
   /* ─── RF006 · Incidentes técnicos + notificação proativa ─────────────────── */
   const registerIncident = useCallback((input: NewIncidentInput) => {
@@ -357,20 +429,24 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
       saveIncidents(next).catch(() => {});
       return next;
     });
-    /* notificação automática ao cliente afetado */
+    /* notificação automática APENAS ao cliente com serviço afetado (RF006) */
+    const affected = inc.servicos.some((sv) => services.some((s) => s.type === SERVICO_TO_TYPE[sv]));
     const sev = INCIDENT_SEVERITY[inc.severidade];
-    setNotifications((prev) => [
-      {
-        id: 'ninc-' + inc.id,
-        title: `Incidente técnico na sua região · ${inc.regiao}: ${inc.titulo}. ${inc.previsao}.`,
-        time: 'agora',
-        unread: true,
-        level: sev.notif,
-      },
-      ...prev,
-    ]);
-    pushAudit(adminRole ?? 'equipe técnica', 'incidente.registrado', `${inc.id} · ${inc.titulo} (${sev.label})`);
-  }, [adminRole, pushAudit]);
+    if (affected) {
+      setNotifications((prev) => [
+        {
+          id: 'ninc-' + inc.id,
+          title: `Incidente técnico na sua região · ${inc.regiao}: ${inc.titulo}. ${inc.previsao}.`,
+          time: 'agora',
+          unread: true,
+          level: sev.notif,
+        },
+        ...prev,
+      ]);
+    }
+    pushAudit(adminRole ?? 'equipe técnica', 'incidente.registrado',
+      `${inc.id} · ${inc.titulo} (${sev.label})${affected ? ' · cliente notificado' : ''}`);
+  }, [adminRole, pushAudit, services]);
 
   const resolveIncident = useCallback((id: string) => {
     setIncidents((prev) => {
@@ -387,8 +463,9 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
     pushAudit(adminRole ?? 'equipe técnica', 'incidente.resolvido', `${id} marcado como normalizado`);
   }, [adminRole, pushAudit]);
 
-  const login = useCallback(async () => {
-    setIsLoggedIn(true);
+  /* Carrega os dados da conta e reaplica o estado persistido do cliente
+   * (pontos, faturas pagas, serviços adicionados, conta ativa, tema). */
+  const loadAccountData = useCallback(async () => {
     setLoading(true);
     try {
       const [u, s, inv, hist, sup, cl, act, notif, rec] = await Promise.all([
@@ -402,21 +479,60 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
         claroApi.getNotifications(),
         claroApi.getRecommendations(),
       ]);
+
+      const persisted = readClientState();
+
       setUser(u);
-      setRawServices(s);
-      setRawInvoices(inv);
+      setRawServices(persisted.extraServices?.length ? [...s, ...persisted.extraServices] : s);
+      setRawInvoices(
+        persisted.paidInvoiceIds?.length
+          ? inv.map((i) => persisted.paidInvoiceIds!.includes(i.id) ? { ...i, status: 'paid' as const } : i)
+          : inv,
+      );
       setDataHistory(hist);
       setSupport(sup);
       setRawClube(cl as ClubeData);
-      setActivity(act);
+      setActivity(persisted.extraActivity?.length ? [...persisted.extraActivity, ...act] : act);
       setNotifications(notif);
       setRecs(rec);
-      /* autentica: emite token de sessão real e abre/recupera a sessão (canal web) */
-      await startSession('web');
+      if (persisted.pointsByAccount) setPointsByAccount(persisted.pointsByAccount);
+      if (persisted.extraServiceIds) setExtraServiceIds(persisted.extraServiceIds);
+      if (persisted.dark != null) setDarkState(persisted.dark);
+      if (persisted.activeAccountId) {
+        setAccounts((prev) => prev.map((a) => ({ ...a, active: a.id === persisted.activeAccountId })));
+      }
+      clientStateHydrated.current = true;
     } finally {
       setLoading(false);
     }
-  }, [startSession]);
+  }, []);
+
+  const login = useCallback(async () => {
+    setIsLoggedIn(true);
+    await loadAccountData();
+    /* autentica: emite token de sessão real e abre/recupera a sessão (canal web) */
+    await startSession('web');
+  }, [loadAccountData, startSession]);
+
+  /* ─── Retomada de sessão ao recarregar a página ──────────────────────────
+   * Se há um token JWT válido no armazenamento local, o cliente continua
+   * logado — não volta para /login. A sessão de conversa já foi reidratada
+   * pelo efeito de cima. */
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (resumedRef.current) return;
+    resumedRef.current = true;
+    let raw: string | null = null;
+    try { raw = window.localStorage.getItem(backendConfig.auth.localStorageKey); } catch {}
+    const payload = raw ? verifyToken(raw) : null;
+    if (payload && !isExpired(payload)) {
+      setIsLoggedIn(true);
+      loadAccountData().finally(() => setAuthResolved(true));
+    } else {
+      if (raw) { try { window.localStorage.removeItem(backendConfig.auth.localStorageKey); } catch {} }
+      setAuthResolved(true);
+    }
+  }, [loadAccountData]);
 
   const logout = useCallback(() => {
     setIsLoggedIn(false);
@@ -424,9 +540,31 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
     setSupport([]); setRawClube(null); setActivity([]);
     setNotifications([]); setRecs([]);
     setSession(null); setSessionToken(null); setTokenPayload(null);
+    setPointsByAccount({}); setExtraServiceIds({});
+    setAccounts(mockAccounts.map((a) => ({ ...a })));
+    clientStateHydrated.current = false;
+    resumedRef.current = false;
     clearSession().catch(() => {});
+    clearClientState();
     try { window.localStorage.removeItem(backendConfig.auth.localStorageKey); } catch {}
   }, []);
+
+  /* Persiste o estado mutável do cliente sempre que ele muda (após hidratar). */
+  useEffect(() => {
+    if (!clientStateHydrated.current || !isLoggedIn) return;
+    const paidInvoiceIds = rawInvoices.filter((i) => i.status === 'paid').map((i) => i.id);
+    const extraServices = rawServices.filter((s) => s.id.startsWith('SVC-EXTRA-'));
+    const extraActivity = activity.filter((a) => !/^AC-/.test(a.id)).slice(0, 20);
+    writeClientState({
+      dark,
+      activeAccountId: activeAccount.id,
+      pointsByAccount,
+      paidInvoiceIds,
+      extraServices,
+      extraServiceIds,
+      extraActivity,
+    });
+  }, [isLoggedIn, dark, activeAccount.id, pointsByAccount, rawInvoices, rawServices, extraServiceIds, activity]);
 
   const switchAccount = useCallback((id: string) => {
     setAccounts((prev) => prev.map((a) => ({ ...a, active: a.id === id })));
@@ -436,7 +574,7 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
     setRawInvoices((prev) =>
       prev.map((i) => i.id === invoice.id ? { ...i, status: 'paid' as const } : i)
     );
-    setRawClube((c) => c ? { ...c, points: c.points + Math.floor(invoice.amount) } : c);
+    adjustPoints(Math.floor(invoice.amount));
     const newAct: Activity = {
       id: 'pay-' + Date.now(),
       type: 'payment',
@@ -447,10 +585,10 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
       unit: undefined,
     };
     setActivity((prev) => [newAct, ...prev]);
-  }, []);
+  }, [adjustPoints]);
 
   const confirmRedeem = useCallback((reward: ClubeReward) => {
-    setRawClube((c) => c ? { ...c, points: c.points - reward.cost } : c);
+    adjustPoints(-reward.cost);
     const newAct: Activity = {
       id: 'rdm-' + Date.now(),
       type: 'reward',
@@ -461,7 +599,7 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
       unit: 'pts',
     };
     setActivity((prev) => [newAct, ...prev]);
-  }, []);
+  }, [adjustPoints]);
 
   /* Adiciona um novo plano (avulso) ao combo do usuário ativo */
   const addPlanToCombo = useCallback((plan: AvailablePlan) => {
@@ -513,21 +651,25 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
   /* ─── Sprint 2 §4.2 · handover suave: abre um ticket ITSM real ─── */
   const requestHandover = useCallback((payload: HandoverPayload) => {
     const channel = payload.canal === 'whatsapp' ? 'whatsapp' : payload.canal === 'app' ? 'app' : 'portal';
+    /* categoria/prioridade herdadas do contexto da Clara (não abre tudo como "Dúvida Geral") */
+    const lastIntent = (sessionRef.current?.contextoAtual.lastIntent ?? 'solicitar_atendente') as ClaraIntentId;
+    const routing = INTENT_TO_TICKET[lastIntent] ?? INTENT_TO_TICKET.solicitar_atendente;
     setQueue((prev) => {
       if (prev.some((q) => q.id === 'Q-SELF')) return prev; // evita duplicar
       const acct = accounts.find((a) => a.active) ?? accounts[0];
       const seq = 482 + prev.filter((q) => q.id.startsWith('Q-')).length;
+      const prefix = routing.category === 'Incidente de Rede' ? 'INC' : routing.category === 'Faturamento' ? 'REQ' : 'REQ';
       const selfItem = {
         id: 'Q-SELF',
-        ticketId: `INC-2026-${String(seq).padStart(4, '0')}`,
+        ticketId: `${prefix}-2026-${String(seq).padStart(4, '0')}`,
         name: acct.name,
         initials: acct.initials,
         cpf: user?.cpf ?? '***.***.***-**',
         contractSince: user?.since ?? '2020-01-01',
         channel,
-        priority: 'alta' as const,
+        priority: routing.priority,
         status: 'novo' as const,
-        category: 'Dúvida Geral',
+        category: routing.category,
         waitMins: 0,
         openedMinsAgo: 0,
         reason: payload.reason,
@@ -538,6 +680,24 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
     });
     markSessionHandover();
   }, [accounts, user, markSessionHandover]);
+
+  /* Ticket do próprio cliente (para a tela "Meu Atendimento") */
+  const myTicket = useMemo(
+    () => attendanceQueue.find((q) => q.id === 'Q-SELF') ?? null,
+    [attendanceQueue],
+  );
+
+  /* CSAT enviado pelo cliente após a resolução */
+  const submitCsat = useCallback((score: number) => {
+    const s = Math.max(1, Math.min(5, Math.round(score)));
+    let tk = '';
+    setQueue((prev) => prev.map((q) => {
+      if (q.id !== 'Q-SELF') return q;
+      tk = q.ticketId;
+      return { ...q, csat: s };
+    }));
+    if (tk) pushAudit('cliente', 'csat.enviado', `Avaliação ${s}/5 no ticket ${tk}`);
+  }, [pushAudit]);
 
   /* Resolver = marca como resolvido + carimba métricas (resolução, CSAT,
    * 1ª resposta) e registra na trilha de auditoria (ISO 27001). */
@@ -553,7 +713,8 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
         resolvedInMins: took,
         firstResponseMins: q.firstResponseMins ?? Math.max(1, Math.round(took * 0.25)),
         resolvedDaysAgo: 0,
-        csat: q.csat ?? 5,
+        /* Q-SELF: deixa em aberto p/ o cliente avaliar; demais mantêm o mock */
+        csat: q.id === 'Q-SELF' ? q.csat : (q.csat ?? 5),
       };
     }));
     if (resolvedTicket) {
@@ -565,33 +726,69 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
     setQueue((prev) => prev.map((q) => q.id === id ? { ...q, status } : q));
   }, []);
 
-  /* LGPD · direito ao esquecimento — anonimiza dados pessoais do ticket */
+  /* LGPD · direito ao esquecimento — anonimiza dados pessoais do ticket.
+   * Guarda os valores originais para permitir reverter (demonstração). */
   const anonymizeTicket = useCallback((id: string) => {
-    let tk = '';
-    setQueue((prev) => prev.map((q) => {
-      if (q.id !== id) return q;
-      tk = q.ticketId;
-      return {
-        ...q,
-        name: 'Titular anonimizado',
-        initials: '··',
-        cpf: '•••.•••.•••-••',
-        claraHistory: q.claraHistory.map((h) => ({ ...h, text: h.role === 'user' ? '[conteúdo removido — LGPD]' : h.text })),
-      };
+    const q = queueRef.current.find((x) => x.id === id);
+    if (!q || q.anonymized) return;
+    setAnonOriginals((o) => o[id] ? o : {
+      ...o,
+      [id]: { name: q.name, initials: q.initials, cpf: q.cpf, claraHistory: q.claraHistory },
+    });
+    setQueue((prev) => prev.map((x) => x.id !== id ? x : {
+      ...x,
+      anonymized: true,
+      name: 'Titular anonimizado',
+      initials: '··',
+      cpf: '•••.•••.•••-••',
+      claraHistory: x.claraHistory.map((h) => ({ ...h, text: h.role === 'user' ? '[conteúdo removido — LGPD]' : h.text })),
     }));
-    if (tk) pushAudit(adminRole ?? 'sistema', 'dados.anonimizados', `LGPD: dados pessoais do ticket ${tk} anonimizados`);
+    pushAudit(adminRole ?? 'sistema', 'dados.anonimizados', `LGPD: dados pessoais do ticket ${q.ticketId} anonimizados`);
   }, [adminRole, pushAudit]);
 
+  /* Reverte a anonimização (restaura os dados originais guardados). */
+  const deanonymizeTicket = useCallback((id: string) => {
+    const orig = anonOriginals[id];
+    const q = queueRef.current.find((x) => x.id === id);
+    if (!orig || !q) return;
+    setQueue((prev) => prev.map((x) => x.id !== id ? x : {
+      ...x, anonymized: false, name: orig.name, initials: orig.initials, cpf: orig.cpf, claraHistory: orig.claraHistory,
+    }));
+    setAnonOriginals((o) => {
+      const next = { ...o }; delete next[id]; return next;
+    });
+    pushAudit(adminRole ?? 'sistema', 'dados.restaurados', `Anonimização do ticket ${q.ticketId} revertida`);
+  }, [adminRole, pushAudit, anonOriginals]);
+
   /* ─── One Hub Admin · RBAC (login por papel) ─── */
+  const ADMIN_KEY = 'onehub.admin';
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(ADMIN_KEY);
+      if (raw) {
+        const { role, name } = JSON.parse(raw) as { role: AdminRole; name: string };
+        if (role) { setAdminRole(role); setAdminName(name); }
+      }
+    } catch {}
+  }, []);
+
   const adminLogin = useCallback((email: string, password: string): AdminRole | null => {
     const u = ADMIN_USERS.find(
       (x) => x.email === email.trim().toLowerCase() && x.password === password
     );
-    if (u) { setAdminRole(u.role); setAdminName(u.name); return u.role; }
+    if (u) {
+      setAdminRole(u.role); setAdminName(u.name);
+      try { window.localStorage.setItem(ADMIN_KEY, JSON.stringify({ role: u.role, name: u.name })); } catch {}
+      return u.role;
+    }
     return null;
   }, []);
 
-  const adminLogout = useCallback(() => { setAdminRole(null); setAdminName(null); }, []);
+  const adminLogout = useCallback(() => {
+    setAdminRole(null); setAdminName(null);
+    try { window.localStorage.removeItem(ADMIN_KEY); } catch {}
+  }, []);
 
   const updateSlaConfig = useCallback((priority: AdminPriority, minutes: number) => {
     const v = Math.max(1, Math.round(minutes));
@@ -604,8 +801,9 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
       user, activeUser, services, invoices, dataHistory, supportChannels,
       clube, activity, notifications, recommendations,
       accounts, dark, searchQuery,
-      loading, isLoggedIn,
+      loading, isLoggedIn, authResolved,
       login, logout, switchAccount, toggleDark, setSearchQuery,
+      markNotificationRead, markAllNotificationsRead,
       confirmPayment, confirmRedeem, addPlanToCombo,
       session, sessionToken, sessionTokenPayload, sessionSecondsLeft,
       startSession, appendSessionMessage, updateSessionContext, markSessionHandover,
@@ -613,9 +811,10 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
       incidents, activeIncidents, registerIncident, resolveIncident,
       claraMetrics, logClaraInteraction,
       attendanceQueue, requestHandover, resolveQueueItem, updateTicketStatus,
+      myTicket, submitCsat,
       adminRole, adminName, adminLogin, adminLogout,
       slaConfig, updateSlaConfig,
-      auditLog, anonymizeTicket,
+      auditLog, anonymizeTicket, deanonymizeTicket,
     }}>
       {children}
     </ClaroContext.Provider>

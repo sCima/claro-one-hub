@@ -3,14 +3,15 @@
 import Image from 'next/image';
 import {
   LayoutDashboard, FileText, Smartphone, Wifi, Tv, Phone,
-  Gift, Headphones, Settings, X, ArrowUpRight,
+  Gift, Headphones, Settings, X, ArrowUpRight, LifeBuoy,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useClaroContext } from '../../context/ClaroContext';
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
 
 export type SectionId =
-  | 'overview' | 'mobile' | 'internet' | 'tv' | 'voice'
+  | 'overview' | 'atendimento' | 'mobile' | 'internet' | 'tv' | 'voice'
   | 'invoices' | 'clube' | 'support' | 'settings';
 
 interface NavItem { id: SectionId; icon: LucideIcon; label: string; badge?: string }
@@ -19,8 +20,9 @@ const sections: { group: string; items: NavItem[] }[] = [
   {
     group: 'Geral',
     items: [
-      { id: 'overview', icon: LayoutDashboard, label: 'Visão geral' },
-      { id: 'invoices', icon: FileText,        label: 'Faturas',     badge: '1' },
+      { id: 'overview',     icon: LayoutDashboard, label: 'Visão geral' },
+      { id: 'atendimento',  icon: LifeBuoy,        label: 'Meu Atendimento' },
+      { id: 'invoices',     icon: FileText,        label: 'Faturas',     badge: '1' },
     ],
   },
   {
@@ -51,6 +53,11 @@ interface Props {
 }
 
 export function HubSidebar({ active, onChange, onOpenTour, mobile = false, onClose }: Props) {
+  const { myTicket, session } = useClaroContext();
+  const atendimentoBadge =
+    myTicket && myTicket.status !== 'resolvido' ? '!'
+    : (session?.historico.length ?? 0) > 0 && session?.status !== 'encerrada' ? '•'
+    : undefined;
   return (
     <aside
       className={cx(
@@ -86,8 +93,9 @@ export function HubSidebar({ active, onChange, onOpenTour, mobile = false, onClo
               {section.group}
             </p>
             <div className="flex flex-col gap-0.5">
-              {section.items.map(({ id, icon: Icon, label, badge }) => {
+              {section.items.map(({ id, icon: Icon, label, badge: staticBadge }) => {
                 const isActive = active === id;
+                const badge = id === 'atendimento' ? atendimentoBadge : staticBadge;
                 return (
                   <button
                     key={id}

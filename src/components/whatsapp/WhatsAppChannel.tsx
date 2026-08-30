@@ -222,6 +222,9 @@ export function WhatsAppChannel() {
             {/* Mensagens */}
             <div
               ref={scrollRef}
+              role="log"
+              aria-live="polite"
+              aria-label="Conversa com a Clara no WhatsApp"
               className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5"
               style={{ backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(0,0,0,0.02), transparent)' }}
             >

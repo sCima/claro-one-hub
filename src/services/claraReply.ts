@@ -42,6 +42,34 @@ export function resumeLine(name: string, lastIntent: string | null, canalAnterio
   return `Oi de novo, ${name}! Estávamos falando sobre ${assunto[lastIntent] ?? 'seu atendimento'} ${origem}. Não precisa repetir nada — vamos continuar daqui.`;
 }
 
+/* Ações que a Clara oferece junto da resposta (RNF002 — navegação guiada).
+ * O ClaraChat despacha `event` (CustomEvent) e o Dashboard executa. */
+export interface ClaraAction {
+  label: string;
+  event: 'onehub:navigate' | 'onehub:pay' | 'onehub:open-store';
+  detail?: string;
+}
+
+export function replyActions(intent: ClaraIntentId, ctx: ClaraContext): ClaraAction[] {
+  const hasPending = ctx.invoices.some((i) => i.status === 'pending');
+  switch (intent) {
+    case 'consultar_fatura':
+      return hasPending
+        ? [{ label: 'Ver faturas', event: 'onehub:navigate', detail: 'invoices' }, { label: 'Pagar agora', event: 'onehub:pay' }]
+        : [{ label: 'Ver faturas', event: 'onehub:navigate', detail: 'invoices' }];
+    case 'segunda_via_fatura':
+      return [{ label: 'Abrir faturas', event: 'onehub:navigate', detail: 'invoices' }];
+    case 'consultar_plano':
+      return [{ label: 'Meus serviços', event: 'onehub:navigate', detail: 'overview' }];
+    case 'alterar_plano':
+      return [{ label: 'Ver planos disponíveis', event: 'onehub:open-store' }];
+    case 'status_servico':
+      return [{ label: 'Acompanhar atendimento', event: 'onehub:navigate', detail: 'atendimento' }];
+    default:
+      return [];
+  }
+}
+
 export function buildReply(intent: ClaraIntentId, ctx: ClaraContext): string {
   const pending = ctx.invoices.find((i) => i.status === 'pending');
   const monthly = ctx.services.reduce((s, x) => s + (x.amount ?? 0), 0);

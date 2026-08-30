@@ -19,7 +19,7 @@ export function SupportPage() {
   const startChannel = (label: string) => {
     if (/whatsapp/i.test(label)) { router.push('/whatsapp'); return; }
     if (/106|ligar/i.test(label)) { window.location.assign('tel:106'); return; }
-    if (/loja/i.test(label)) { window.open('https://www.claro.com.br', '_blank', 'noopener'); return; }
+    if (/loja/i.test(label)) { window.dispatchEvent(new CustomEvent('onehub:open-store')); return; } // loja interna → contratar serviços
     window.dispatchEvent(new CustomEvent('onehub:open-clara')); // Chat Online → abre a Clara
   };
 

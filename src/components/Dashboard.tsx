@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { HubSidebar, type SectionId } from './hub/HubSidebar';
 import { HubTopBar } from './hub/HubTopBar';
@@ -18,6 +18,9 @@ import { ServiceDetailPage } from './hub/pages/ServiceDetailPage';
 import { ClubePage } from './hub/pages/ClubePage';
 import { SupportPage } from './hub/pages/SupportPage';
 import { SettingsPage } from './hub/pages/SettingsPage';
+import { AtendimentoPage } from './hub/pages/AtendimentoPage';
+import { SupportHubCard } from './hub/widgets/SupportHubCard';
+import { ActiveConversationBanner } from './hub/widgets/ActiveConversationBanner';
 import { PayModal } from './hub/overlays/PayModal';
 import { RedeemAnimation } from './hub/overlays/RedeemAnimation';
 import { TourOverlay } from './hub/overlays/TourOverlay';
@@ -98,8 +101,32 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [addPlanOpen, setAddPlanOpen] = useState<{ preselect?: string | null } | null>(null);
   const [claraOpen, setClaraOpen]   = useState(false);
   const [claraPrefill, setClaraPrefill] = useState<string | null>(null);
+  const [convBannerOpen, setConvBannerOpen] = useState(true);
 
   const { toasts, push, dismiss } = useToasts();
+
+  const pendingInvoiceRef = useRef<Invoice | null>(null);
+
+  /* Ações disparadas de outras telas / da Clara (RNF002 — navegação guiada) */
+  useEffect(() => {
+    const openClara = () => setClaraOpen(true);
+    const openStore = () => setAddPlanOpen({});
+    const openPay = () => { const inv = pendingInvoiceRef.current; if (inv) setPayInv(inv); };
+    const goToPage = (e: Event) => {
+      const page = (e as CustomEvent<SectionId>).detail;
+      if (page) { setActive(page); setMobileNav(false); }
+    };
+    window.addEventListener('onehub:open-clara', openClara);
+    window.addEventListener('onehub:open-store', openStore);
+    window.addEventListener('onehub:pay', openPay);
+    window.addEventListener('onehub:navigate', goToPage as EventListener);
+    return () => {
+      window.removeEventListener('onehub:open-clara', openClara);
+      window.removeEventListener('onehub:open-store', openStore);
+      window.removeEventListener('onehub:pay', openPay);
+      window.removeEventListener('onehub:navigate', goToPage as EventListener);
+    };
+  }, []);
 
   const { addPlanToCombo, activeUser } = useClaroContext();
 
@@ -110,6 +137,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   const displayUser = activeUser ?? user;
   const pendingInvoice = invoices.find((i) => i.status === 'pending') ?? invoices[0] ?? null;
+  useEffect(() => { pendingInvoiceRef.current = pendingInvoice; }, [pendingInvoice]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleLogout = () => {
@@ -176,7 +204,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             onShowDetails={() => handleShowBillDetails(pendingInvoice)}
           />
         )}
-        <QuickActions onNav={handleNav} onPay={() => handlePay()} />
+        <div className="grid lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-7">
+            <QuickActions onNav={handleNav} onPay={() => handlePay()} />
+          </div>
+          <div className="lg:col-span-5">
+            <SupportHubCard onOpenAtendimento={() => handleNav('atendimento')} />
+          </div>
+        </div>
         <div className="grid lg:grid-cols-12 gap-6">
           <div className="lg:col-span-7 space-y-6">
             <ServicesPanel services={services} onOpen={handleNav} onAddPlan={() => handleAddPlan()} />
@@ -191,6 +226,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         <Recommendations items={recommendations} onAdd={(slug) => handleAddPlan(slug)} />
       </div>
     );
+  } else if (active === 'atendimento') {
+    mainContent = <AtendimentoPage />;
   } else if (active === 'invoices') {
     mainContent = <InvoicesPage invoices={invoices} onPay={handlePay} onShowDetails={handleShowBillDetails} />;
   } else if (active === 'clube' && clube) {
@@ -217,6 +254,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="min-h-screen bg-warm-50 dark:bg-warm-900 text-warm-900 dark:text-warm-50">
+      <a href="#conteudo-hub" className="skip-link">Pular para o conteúdo</a>
       {/* ── Desktop sidebar ── */}
       <HubSidebar active={active} onChange={handleNav} onOpenTour={handleOpenTour} />
 
@@ -249,8 +287,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         {bannerOpen && (
           <NetworkStatusBanner onDismiss={() => setBannerOpen(false)} />
         )}
+        {convBannerOpen && active !== 'atendimento' && (
+          <ActiveConversationBanner
+            onDismiss={() => setConvBannerOpen(false)}
+            onResume={() => setClaraOpen(true)}
+            onOpenAtendimento={() => handleNav('atendimento')}
+          />
+        )}
 
-        <main className="px-6 lg:px-10 py-8 lg:py-10 max-w-[1400px] mx-auto">
+        <main id="conteudo-hub" className="px-6 lg:px-10 py-8 lg:py-10 max-w-[1400px] mx-auto">
           {/* Page greeting */}
           <div className="mb-6">
             <p className="text-[10px] font-bold text-warm-400 uppercase tracking-[0.22em] mb-1">

@@ -3,6 +3,7 @@ export const mockUser = {
   name: 'Rodolfo Sanches',
   cpf: '***.***.123-45',
   email: 'Rodolfo.Sanches@claro.com.br',
+  phone: '(11) 98765-4321',
   plan: 'Combo Multi 4 Serviços',
   tier: 'Ouro' as const,
   since: '2019-03-15',
@@ -20,6 +21,7 @@ export const mockAccounts = [
 export const accountProfiles = {
   A1: {
     email: 'rodolfo.sanches@claro.com.br',
+    phone: '(11) 98765-4321',
     tier: 'Ouro' as const,
     serviceIds: ['SVC-001', 'SVC-002', 'SVC-003', 'SVC-004'],
     invoiceMultiplier: 1,
@@ -27,6 +29,7 @@ export const accountProfiles = {
   },
   A2: {
     email: 'bianca.sanches@claro.com.br',
+    phone: '(11) 99640-1180',
     tier: 'Prata' as const,
     serviceIds: ['SVC-001'],
     invoiceMultiplier: 0.23,   // só celular ≈ 119,9 / 519,7
@@ -34,6 +37,7 @@ export const accountProfiles = {
   },
   A3: {
     email: 'lucas.sanches@claro.com.br',
+    phone: '(11) 99117-2245',
     tier: 'Bronze' as const,
     serviceIds: ['SVC-001'],
     invoiceMultiplier: 0.06,   // pré-pago ≈ 30/mês
@@ -41,6 +45,7 @@ export const accountProfiles = {
   },
   A4: {
     email: 'financeiro@sanchesjr.com.br',
+    phone: '(11) 3344-5566',
     tier: 'PJ' as const,
     serviceIds: ['SVC-002', 'SVC-004'],
     invoiceMultiplier: 0.38,   // internet + fixo
@@ -193,6 +198,20 @@ export const claraIntents = [
 ] as const;
 
 export type ClaraIntentId = typeof claraIntents[number]['id'] | 'fora_de_escopo';
+
+/* Intenção da Clara → categoria/prioridade do ticket de handover (§4.2).
+ * Evita abrir todo chamado como "Dúvida Geral". */
+export const INTENT_TO_TICKET: Record<ClaraIntentId, { category: string; priority: 'alta' | 'media' | 'baixa' }> = {
+  saudacao:           { category: 'Dúvida Geral',       priority: 'baixa' },
+  consultar_fatura:   { category: 'Faturamento',        priority: 'media' },
+  segunda_via_fatura: { category: 'Faturamento',        priority: 'media' },
+  consultar_plano:    { category: 'Comercial / Vendas', priority: 'baixa' },
+  alterar_plano:      { category: 'Comercial / Vendas', priority: 'baixa' },
+  status_servico:     { category: 'Incidente de Rede',  priority: 'alta'  },
+  solicitar_atendente:{ category: 'Dúvida Geral',       priority: 'media' },
+  despedida:          { category: 'Dúvida Geral',       priority: 'baixa' },
+  fora_de_escopo:     { category: 'Dúvida Geral',       priority: 'media' },
+};
 
 /* ─── One Hub Admin · ITSM / Service Desk (Sprint 2 §4.4) ─────────────────── */
 export type AdminChannel  = 'whatsapp' | 'portal' | 'app';
@@ -444,6 +463,51 @@ export const COMPLIANCE = {
   retentionDays: 365,
 };
 
+/* ─── RF006 · Incidentes técnicos e notificação proativa ──────────────────── */
+export type IncidentSeverity = 'critico' | 'alto' | 'moderado' | 'informativo';
+export type IncidentServico  = 'internet' | 'tv' | 'telefonia' | 'movel';
+
+export const INCIDENT_SERVICO_LABEL: Record<IncidentServico, string> = {
+  internet: 'Internet', tv: 'TV', telefonia: 'Telefonia fixa', movel: 'Móvel',
+};
+
+export const INCIDENT_SEVERITY: Record<IncidentSeverity, { label: string; badge: string; notif: 'warn' | 'info' }> = {
+  critico:     { label: 'Crítico',     badge: 'bg-claro text-white',                          notif: 'warn' },
+  alto:        { label: 'Alto',        badge: 'bg-amber-500 text-white',                      notif: 'warn' },
+  moderado:    { label: 'Moderado',    badge: 'bg-amber-200 text-amber-900',                  notif: 'info' },
+  informativo: { label: 'Informativo', badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300', notif: 'info' },
+};
+
+export interface Incident {
+  id: string;
+  titulo: string;
+  descricao: string;
+  regiao: string;
+  servicos: IncidentServico[];
+  severidade: IncidentSeverity;
+  previsao: string;                 // texto livre: "hoje até 18h", "~45 min"…
+  status: 'ativo' | 'resolvido';
+  abertoPor: string;                // papel/usuário da equipe técnica
+  criadoEm: number;
+  resolvidoEm?: number;
+}
+
+/* Incidente ativo por padrão — coerente com o banner da Visão Geral */
+export const mockIncidents: Incident[] = [
+  {
+    id: 'INC-4471',
+    titulo: 'Instabilidade na fibra — São Paulo, Zona Sul',
+    descricao: 'Rompimento em fibra troncal afetando bairros da Zona Sul de São Paulo. Equipes de campo deslocadas; reroteamento parcial em andamento.',
+    regiao: 'São Paulo · Zona Sul',
+    servicos: ['internet'],
+    severidade: 'alto',
+    previsao: 'Normalização prevista em ~45 min',
+    status: 'ativo',
+    abertoPor: 'NOC / Field Ops',
+    criadoEm: Date.now() - 1000 * 60 * 32,
+  },
+];
+
 export const serviceDetails = {
   mobile: {
     label: 'Claro Celular', icon: 'Smartphone' as const, tagline: 'Sem fronteiras, sem limites',
@@ -502,6 +566,7 @@ export type QueueItem         = typeof mockAttendanceQueue[number] & {
   firstResponseMins?: number;
   resolvedDaysAgo?: number;
   csat?: number;
+  anonymized?: boolean;
 };
 export type ResolvedTicket    = typeof mockResolvedTickets[number];
 export type TicketTrendPoint  = typeof mockTicketTrend[number];

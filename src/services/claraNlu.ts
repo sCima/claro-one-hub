@@ -43,9 +43,19 @@ function extractEntities(q: string): Record<string, string> {
 }
 
 /* ─── motor local (regex) ──────────────────────────────────────────────────── */
+// Solicitações específicas também contêm palavras genéricas como "fatura" e
+// "meu plano". Avaliá-las primeiro evita perder 2ª via, alteração e handover.
+const intentPriority: Partial<Record<ClaraIntentId, number>> = {
+  solicitar_atendente: 0,
+  segunda_via_fatura: 1,
+  alterar_plano: 2,
+};
+const localIntents = [...claraIntents].sort((a, b) =>
+  (intentPriority[a.id] ?? 3) - (intentPriority[b.id] ?? 3));
+
 function detectIntentLocal(input: string): NluResult {
   const q = input.toLowerCase().trim();
-  for (const it of claraIntents) {
+  for (const it of localIntents) {
     if (it.patterns.test(q)) {
       return { intent: it.id, confidence: 1, entities: extractEntities(q), source: 'regex', resolvedAuto: it.resolvedAuto };
     }
@@ -70,7 +80,7 @@ async function detectIntentRemote(input: string, sessionId: string): Promise<Nlu
     confidence?: number;
     parameters?: Record<string, string>;
   };
-  const intent = (data.intent as ClaraIntentId) || 'fora_de_escopo';
+  const intent: ClaraIntentId = claraIntents.find((candidate) => candidate.id === data.intent)?.id ?? 'fora_de_escopo';
   return {
     intent,
     confidence: data.confidence ?? 0.5,

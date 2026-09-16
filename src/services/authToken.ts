@@ -8,7 +8,7 @@
  * então o mesmo código de leitura serve para os dois modos.
  * ───────────────────────────────────────────────────────────────────────────── */
 
-import { backendConfig, isApiMode } from '../config/backend';
+import { backendConfig, isApiMode, requireEndpoint } from '../config/backend';
 import type { Canal } from './session';
 
 export interface TokenPayload {
@@ -64,15 +64,20 @@ export interface IssueTokenInput {
 
 /** Emite um token de sessão para o cliente autenticado. */
 export async function issueToken(input: IssueTokenInput): Promise<AuthResult> {
-  if (isApiMode && backendConfig.auth.endpoint) {
-    const res = await fetch(`${backendConfig.auth.endpoint}/auth/token`, {
+  if (isApiMode) {
+    const endpoint = requireEndpoint(backendConfig.auth.endpoint, 'auth');
+    const res = await fetch(`${endpoint}/auth/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
     if (!res.ok) throw new Error(`auth/token ${res.status}`);
     const { token } = (await res.json()) as { token: string };
-    return { token, payload: decodeToken(token)! };
+    const payload = verifyToken(token);
+    if (!payload || payload.sub !== input.usuarioId || payload.sid !== input.sessionId || payload.canal !== input.canal) {
+      throw new Error('auth/token retornou um token inválido ou de outra sessão');
+    }
+    return { token, payload };
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -93,32 +98,42 @@ export async function issueToken(input: IssueTokenInput): Promise<AuthResult> {
 /** Lê o payload do token sem validar assinatura (uso de exibição). */
 export function decodeToken(token: string): TokenPayload | null {
   try {
+    if (typeof token !== 'string' || !/^[\w-]+\.[\w-]+\.[\w-]+$/.test(token)) return null;
     const [, p] = token.split('.');
-    if (!p) return null;
-    return b64urlDecode<TokenPayload>(p);
+    const payload = b64urlDecode<Partial<TokenPayload> | null>(p);
+    if (!payload || typeof payload !== 'object' ||
+      typeof payload.sub !== 'string' || !payload.sub.trim() ||
+      typeof payload.sid !== 'string' || !payload.sid.trim() ||
+      typeof payload.name !== 'string' ||
+      !['web', 'app', 'whatsapp'].includes(payload.canal ?? '') ||
+      !Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) ||
+      payload.iat! < 0 || payload.exp! <= payload.iat!) return null;
+    return payload as TokenPayload;
   } catch {
     return null;
   }
 }
 
-/** Valida assinatura (modo mock) + expiração. */
+/**
+ * Valida estrutura/expiração e, no mock, a assinatura simulada.
+ * Em modo API isto é apenas uma leitura local: a assinatura e a autorização
+ * devem ser verificadas pelo servidor em toda operação protegida.
+ */
 export function verifyToken(token: string): TokenPayload | null {
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  const [h, p, sig] = parts;
+  const payload = decodeToken(token);
+  if (!payload || isExpired(payload)) return null;
+  const [h, p, sig] = token.split('.');
   if (!isApiMode && mockSignature(h, p) !== sig) return null;
-  const payload = b64urlDecode<TokenPayload>(p);
-  if (payload.exp * 1000 < Date.now()) return null;
   return payload;
 }
 
 export function isExpired(payload: TokenPayload | null): boolean {
-  if (!payload) return true;
-  return payload.exp * 1000 < Date.now();
+  if (!payload || !Number.isSafeInteger(payload.exp)) return true;
+  return payload.exp <= Math.floor(Date.now() / 1000);
 }
 
 /** Segundos restantes até expirar (>= 0). */
 export function secondsUntilExpiry(payload: TokenPayload | null): number {
-  if (!payload) return 0;
-  return Math.max(0, payload.exp - Math.floor(Date.now() / 1000));
+  if (isExpired(payload)) return 0;
+  return Math.max(0, payload!.exp - Math.floor(Date.now() / 1000));
 }

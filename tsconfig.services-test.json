@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "incremental": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "rootDir": ".",
+    "outDir": "./build/services-test",
+    "plugins": []
+  },
+  "include": ["src/services/**/*.ts", "src/config/backend.ts", "src/data/mockData.ts"],
+  "exclude": ["node_modules", "build"]
+}

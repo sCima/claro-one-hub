@@ -9,7 +9,7 @@
  * Modo api  → CRUD REST em /incidents.
  * ───────────────────────────────────────────────────────────────────────────── */
 
-import { backendConfig, isApiMode } from '../config/backend';
+import { backendConfig, isApiMode, requireEndpoint } from '../config/backend';
 import { mockIncidents, type Incident, type IncidentServico, type IncidentSeverity } from '../data/mockData';
 
 export type { Incident, IncidentServico, IncidentSeverity };
@@ -26,6 +26,28 @@ export interface NewIncidentInput {
 
 const KEY = backendConfig.incidents.localStorageKey;
 
+function isIncidentList(value: unknown): value is Incident[] {
+  return Array.isArray(value) && value.every((item: unknown) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const incident = item as Partial<Incident>;
+    return typeof incident.id === 'string' && incident.id.length > 0 &&
+      typeof incident.titulo === 'string' && typeof incident.descricao === 'string' &&
+      typeof incident.regiao === 'string' && typeof incident.previsao === 'string' &&
+      typeof incident.abertoPor === 'string' &&
+      Array.isArray(incident.servicos) && incident.servicos.every((s) =>
+        ['internet', 'tv', 'telefonia', 'movel'].includes(s)) &&
+      ['critico', 'alto', 'moderado', 'informativo'].includes(incident.severidade ?? '') &&
+      (incident.status === 'ativo' || incident.status === 'resolvido') &&
+      Number.isSafeInteger(incident.criadoEm) && incident.criadoEm! >= 0 &&
+      (incident.resolvidoEm === undefined || (Number.isSafeInteger(incident.resolvidoEm) && incident.resolvidoEm >= 0));
+  });
+}
+
+function parseIncidents(value: unknown): Incident[] {
+  if (!isIncidentList(value)) throw new Error('incidents retornou uma lista inválida');
+  return value;
+}
+
 export function makeIncident(input: NewIncidentInput): Incident {
   const rnd = Math.floor(1000 + Math.random() * 9000);
   return {
@@ -40,7 +62,8 @@ function readLocal(): Incident[] | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Incident[]) : null;
+    const list: unknown = raw ? JSON.parse(raw) : null;
+    return isIncidentList(list) ? list : null;
   } catch {
     return null;
   }
@@ -57,24 +80,27 @@ function writeLocal(list: Incident[]): void {
 
 /** Lista todos os incidentes (ativos + resolvidos). */
 export async function loadIncidents(): Promise<Incident[]> {
-  if (isApiMode && backendConfig.incidents.endpoint) {
-    const res = await fetch(`${backendConfig.incidents.endpoint}/incidents`);
+  if (isApiMode) {
+    const endpoint = requireEndpoint(backendConfig.incidents.endpoint, 'incidents');
+    const res = await fetch(`${endpoint}/incidents`);
     if (!res.ok) throw new Error(`incidents GET ${res.status}`);
-    return (await res.json()) as Incident[];
+    return parseIncidents(await res.json());
   }
-  return readLocal() ?? mockIncidents;
+  return readLocal() ?? mockIncidents.map((incident) => ({ ...incident, servicos: [...incident.servicos] }));
 }
 
 /** Persiste a lista completa (upsert em lote). */
 export async function saveIncidents(list: Incident[]): Promise<Incident[]> {
-  if (isApiMode && backendConfig.incidents.endpoint) {
-    const res = await fetch(`${backendConfig.incidents.endpoint}/incidents`, {
+  parseIncidents(list);
+  if (isApiMode) {
+    const endpoint = requireEndpoint(backendConfig.incidents.endpoint, 'incidents');
+    const res = await fetch(`${endpoint}/incidents`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(list),
     });
     if (!res.ok) throw new Error(`incidents PUT ${res.status}`);
-    return (await res.json()) as Incident[];
+    return res.status === 204 ? list : parseIncidents(await res.json());
   }
   writeLocal(list);
   return list;

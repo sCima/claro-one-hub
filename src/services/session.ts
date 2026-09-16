@@ -11,7 +11,7 @@
  * Modo api   → GET/PUT no serviço de gestão de contexto do backend.
  * ───────────────────────────────────────────────────────────────────────────── */
 
-import { backendConfig, isApiMode } from '../config/backend';
+import { backendConfig, isApiMode, requireEndpoint } from '../config/backend';
 
 export type Canal = 'web' | 'app' | 'whatsapp';
 
@@ -90,7 +90,7 @@ export function appendMessage(
     text: msg.text,
     canal: msg.canal,
   };
-  return { ...session, historico: [...session.historico, message], updatedAt: message.ts };
+  return { ...session, historico: [...session.historico, message], updatedAt: Date.now() };
 }
 
 export function setContext(session: Session, patch: Partial<Omit<SessionContext, 'updatedAt'>>): Session {
@@ -111,12 +111,70 @@ export function channelsUsed(session: Session): Canal[] {
 /* ─── persistência ─────────────────────────────────────────────────────────── */
 
 const KEY = backendConfig.session.localStorageKey;
+let remoteSession: Session | null = null;
+let sessionGeneration = 0;
+let pendingMutation: Promise<unknown> = Promise.resolve();
+
+function enqueueMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const next = pendingMutation.then(operation);
+  // Falhas são devolvidas ao chamador, mas não bloqueiam as próximas operações.
+  pendingMutation = next.catch(() => {});
+  return next;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isTimestamp(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isCanal(value: unknown): value is Canal {
+  return value === 'web' || value === 'app' || value === 'whatsapp';
+}
+
+function isSession(value: unknown): value is Session {
+  if (!isRecord(value) || typeof value.sessionId !== 'string' || !value.sessionId.trim() ||
+    typeof value.usuarioId !== 'string' || !value.usuarioId.trim() || !isCanal(value.canalOrigem) ||
+    (value.status !== 'ativa' && value.status !== 'handover' && value.status !== 'encerrada') ||
+    (value.telefone !== null && typeof value.telefone !== 'string') ||
+    !isTimestamp(value.createdAt) || !isTimestamp(value.updatedAt) ||
+    !Array.isArray(value.historico) || !isRecord(value.contextoAtual)) return false;
+  const context = value.contextoAtual;
+  return (context.lastIntent === null || typeof context.lastIntent === 'string') &&
+    (context.summary === null || typeof context.summary === 'string') &&
+    isTimestamp(context.updatedAt) && isRecord(context.entities) &&
+    Object.values(context.entities).every((entry) => typeof entry === 'string') &&
+    value.historico.every((message: unknown) => isRecord(message) &&
+      typeof message.id === 'string' && typeof message.text === 'string' &&
+      (message.role === 'user' || message.role === 'clara' || message.role === 'agent') &&
+      isCanal(message.canal) && isTimestamp(message.ts));
+}
+
+function isActive(session: Session): boolean {
+  return session.status !== 'encerrada' &&
+    Date.now() - session.updatedAt < backendConfig.session.ttlSeconds * 1000;
+}
+
+function parseRemote(value: unknown): Session {
+  if (!isSession(value)) throw new Error('sessions retornou uma sessão inválida');
+  return value;
+}
+
+function rememberRemote(session: Session, generation: number): void {
+  // Respostas anteriores ao logout ou a uma nova gravação não substituem o cache.
+  if (generation !== sessionGeneration) return;
+  remoteSession = session;
+  writeLocal(session);
+}
 
 function readLocal(): Session | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Session) : null;
+    const session: unknown = raw ? JSON.parse(raw) : null;
+    return isSession(session) ? session : null;
   } catch {
     return null;
   }
@@ -134,16 +192,22 @@ function writeLocal(session: Session | null): void {
 
 /** Recupera a sessão ativa de um cliente (por id). */
 export async function loadSession(usuarioId: string): Promise<Session | null> {
-  if (isApiMode && backendConfig.session.endpoint) {
+  if (isApiMode) {
+    const endpoint = requireEndpoint(backendConfig.session.endpoint, 'sessions');
+    const generation = sessionGeneration;
     const res = await fetch(
-      `${backendConfig.session.endpoint}/sessions?usuario=${encodeURIComponent(usuarioId)}`,
+      `${endpoint}/sessions?usuario=${encodeURIComponent(usuarioId)}`,
     );
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`sessions GET ${res.status}`);
-    return (await res.json()) as Session;
+    const session = parseRemote(await res.json());
+    if (session.usuarioId !== usuarioId) throw new Error('sessions retornou outro usuário');
+    if (!isActive(session) || generation !== sessionGeneration) return null;
+    rememberRemote(session, generation);
+    return session;
   }
   const local = readLocal();
-  return local && local.usuarioId === usuarioId && local.status !== 'encerrada' ? local : null;
+  return local && local.usuarioId === usuarioId && isActive(local) ? local : null;
 }
 
 /**
@@ -152,46 +216,72 @@ export async function loadSession(usuarioId: string): Promise<Session | null> {
  */
 export async function recoverSessionByPhone(telefone: string): Promise<Session | null> {
   const normalized = telefone.replace(/\D/g, '');
-  if (isApiMode && backendConfig.session.endpoint) {
+  if (!normalized) return null;
+  if (isApiMode) {
+    const endpoint = requireEndpoint(backendConfig.session.endpoint, 'sessions');
+    const generation = sessionGeneration;
     const res = await fetch(
-      `${backendConfig.session.endpoint}/sessions/by-phone/${encodeURIComponent(normalized)}`,
+      `${endpoint}/sessions/by-phone/${encodeURIComponent(normalized)}`,
     );
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`sessions by-phone ${res.status}`);
-    return (await res.json()) as Session;
+    const session = parseRemote(await res.json());
+    if (session.telefone?.replace(/\D/g, '') !== normalized) throw new Error('sessions retornou outro telefone');
+    if (!isActive(session) || generation !== sessionGeneration) return null;
+    rememberRemote(session, generation);
+    return session;
   }
   const local = readLocal();
-  if (!local || local.status === 'encerrada' || !local.telefone) return null;
+  if (!local || !isActive(local) || !local.telefone) return null;
   return local.telefone.replace(/\D/g, '') === normalized ? local : null;
 }
 
 /** Persiste a sessão (upsert). */
 export async function saveSession(session: Session): Promise<Session> {
-  if (isApiMode && backendConfig.session.endpoint) {
-    const res = await fetch(
-      `${backendConfig.session.endpoint}/sessions/${encodeURIComponent(session.sessionId)}`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(session),
-      },
-    );
-    if (!res.ok) throw new Error(`sessions PUT ${res.status}`);
-    return (await res.json()) as Session;
+  if (!isSession(session)) throw new Error('Não é possível salvar uma sessão inválida');
+  if (isApiMode) {
+    const endpoint = requireEndpoint(backendConfig.session.endpoint, 'sessions');
+    const generation = ++sessionGeneration;
+    // Mantém o identificador inclusive enquanto o primeiro PUT ainda está em voo.
+    remoteSession = session;
+    const body = JSON.stringify(session);
+    return enqueueMutation(async () => {
+      const res = await fetch(
+        `${endpoint}/sessions/${encodeURIComponent(session.sessionId)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        },
+      );
+      if (!res.ok) throw new Error(`sessions PUT ${res.status}`);
+      const saved = res.status === 204 ? parseRemote(JSON.parse(body)) : parseRemote(await res.json());
+      if (saved.sessionId !== session.sessionId || saved.usuarioId !== session.usuarioId) {
+        throw new Error('sessions PUT retornou outra sessão');
+      }
+      rememberRemote(saved, generation);
+      return saved;
+    });
   }
   writeLocal(session);
   return session;
 }
 
 export async function clearSession(): Promise<void> {
-  if (isApiMode && backendConfig.session.endpoint) {
-    const local = readLocal();
+  const local = remoteSession ?? readLocal();
+  sessionGeneration += 1;
+  remoteSession = null;
+  writeLocal(null);
+  if (isApiMode) {
+    const endpoint = requireEndpoint(backendConfig.session.endpoint, 'sessions');
     if (local) {
-      await fetch(
-        `${backendConfig.session.endpoint}/sessions/${encodeURIComponent(local.sessionId)}`,
-        { method: 'DELETE' },
-      ).catch(() => {});
+      await enqueueMutation(async () => {
+        const res = await fetch(
+          `${endpoint}/sessions/${encodeURIComponent(local.sessionId)}`,
+          { method: 'DELETE' },
+        );
+        if (!res.ok && res.status !== 404) throw new Error(`sessions DELETE ${res.status}`);
+      });
     }
   }
-  writeLocal(null);
 }

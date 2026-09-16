@@ -508,10 +508,10 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async () => {
-    setIsLoggedIn(true);
     await loadAccountData();
     /* autentica: emite token de sessão real e abre/recupera a sessão (canal web) */
     await startSession('web');
+    setIsLoggedIn(true);
   }, [loadAccountData, startSession]);
 
   /* ─── Retomada de sessão ao recarregar a página ──────────────────────────
@@ -768,7 +768,11 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
       const raw = window.localStorage.getItem(ADMIN_KEY);
       if (raw) {
         const { role, name } = JSON.parse(raw) as { role: AdminRole; name: string };
-        if (role) { setAdminRole(role); setAdminName(name); }
+        if ((role === 'atendente' || role === 'gerente') && typeof name === 'string') {
+          setAdminRole(role); setAdminName(name);
+        } else {
+          window.localStorage.removeItem(ADMIN_KEY);
+        }
       }
     } catch {}
   }, []);

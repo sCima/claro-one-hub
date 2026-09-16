@@ -1,5 +1,32 @@
 # Revisão dos serviços — 16/09/2026
 
+## Atualização após autorização para corrigir lógica do frontend
+
+O usuário autorizou alterações de lógica sem mudanças visuais e publicação em
+produção. A pendência atendente/gerente descrita no diagnóstico inicial abaixo
+foi corrigida: o conteúdo autenticado do painel é desmontado no logout e recebe
+uma nova instância ao trocar o papel. O JSX visual, classes CSS, textos, imagens
+e elementos existentes foram preservados.
+
+Também foram corrigidos o conflito de redirecionamento quando as sessões de
+cliente e administrador coexistem, o estado de login definido antes de concluir
+a autenticação e a aceitação de papéis administrativos inválidos no cache.
+O botão de login deixa de ficar permanentemente ocupado após falhas.
+
+Validação no navegador, contra o build de produção local:
+
+- Atendente → sair → gerente, sem voltar de página: Visão Gerencial carregada.
+- Recarregar autenticado como gerente: Visão Gerencial preservada.
+- Gerente → sair → atendente: console carregado, sem painel vazio.
+- 28 testes de serviços e build de produção aprovados.
+
+Produção existente identificada pela API do GitHub: Vercel, branch `main`,
+`https://claro-one-hub.vercel.app`. O histórico abaixo documenta o escopo e os
+achados da primeira etapa; a restrição de não editar lógica React foi substituída
+pela autorização acima. Os demais limites continuam válidos.
+
+---
+
 Base: `main`, commit `5b5db01`. Branch: `codex/backend-bugfixes`.
 
 ## Escopo e limite da revisão

@@ -28,8 +28,8 @@ export function LoginScreen() {
   /* Já autenticado? Vai direto para o destino, sem mostrar o formulário. */
   useEffect(() => {
     if (!authResolved) return;
-    if (isLoggedIn) router.replace('/hub');
-    else if (adminRole) router.replace('/admin');
+    if (adminRole) router.replace('/admin');
+    else if (isLoggedIn) router.replace('/hub');
   }, [authResolved, isLoggedIn, adminRole, router]);
 
   /* cliente */
@@ -46,8 +46,12 @@ export function LoginScreen() {
     e.preventDefault();
     if (busy || !cId.trim() || !cPwd.trim()) return;
     setBusy(true);
-    await login();               // protótipo: aceita qualquer credencial
-    router.push('/hub');
+    try {
+      await login();             // protótipo: aceita qualquer credencial
+      router.push('/hub');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const submitAdmin = (e: React.FormEvent) => {

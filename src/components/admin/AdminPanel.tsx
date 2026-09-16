@@ -83,8 +83,14 @@ type AdminTab = 'dashboard' | 'console' | 'incidentes';
 
 export function AdminPanel({ onExit }: Props) {
   const { adminRole } = useClaroContext();
-  const [tab, setTab] = useState<AdminTab>(adminRole === 'gerente' ? 'dashboard' : 'console');
   if (!adminRole) return <AdminGate onExit={onExit} />;
+  return <AuthenticatedAdminPanel key={adminRole} onExit={onExit} adminRole={adminRole} />;
+}
+
+// O estado do console pertence ao login atual. Sair ou trocar o papel desmonta
+// esta instância, incluindo aba selecionada, filtros e rascunhos do atendente.
+function AuthenticatedAdminPanel({ onExit, adminRole }: Props & { adminRole: 'atendente' | 'gerente' }) {
+  const [tab, setTab] = useState<AdminTab>(adminRole === 'gerente' ? 'dashboard' : 'console');
   return (
     <div className="h-screen flex flex-col bg-warm-100 dark:bg-warm-900 text-warm-900 dark:text-warm-50">
       <AdminTopBar onExit={onExit} tab={tab} onTab={(t) => setTab(t as AdminTab)} role={adminRole} />

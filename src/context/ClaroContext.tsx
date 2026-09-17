@@ -120,6 +120,8 @@ interface ClaroState {
   /* ─── One Hub Admin · RBAC (acesso restrito por papel) ─── */
   adminRole: AdminRole | null;
   adminName: string | null;
+  /** false até o app terminar de checar se há sessão de admin salva (evita flicker p/ /login) */
+  adminAuthResolved: boolean;
   adminLogin: (email: string, password: string) => AdminRole | null;
   adminLogout: () => void;
   /* config gerencial editável (gerente) */
@@ -193,6 +195,7 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
   );
   const [adminRole, setAdminRole]         = useState<AdminRole | null>(null);
   const [adminName, setAdminName]         = useState<string | null>(null);
+  const [adminAuthResolved, setAdminAuthResolved] = useState(false);
   const [slaConfig, setSlaConfig]         = useState<Record<AdminPriority, number>>({ ...SLA_TARGET });
   const [auditLog, setAuditLog]           = useState<AuditEntry[]>([]);
   /* pontos do Clube por conta (base = accountProfiles, ajustado por pagamento/resgate) */
@@ -775,6 +778,7 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch {}
+    setAdminAuthResolved(true);
   }, []);
 
   const adminLogin = useCallback((email: string, password: string): AdminRole | null => {
@@ -816,7 +820,7 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
       claraMetrics, logClaraInteraction,
       attendanceQueue, requestHandover, resolveQueueItem, updateTicketStatus,
       myTicket, submitCsat,
-      adminRole, adminName, adminLogin, adminLogout,
+      adminRole, adminName, adminAuthResolved, adminLogin, adminLogout,
       slaConfig, updateSlaConfig,
       auditLog, anonymizeTicket, deanonymizeTicket,
     }}>

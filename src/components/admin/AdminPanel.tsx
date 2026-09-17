@@ -6,7 +6,7 @@ import {
   MessageSquare, Globe, Smartphone, Send, ArrowLeft, Sparkles,
   FileText, CalendarClock, TrendingUp, CheckCircle2, ShieldCheck,
   Wifi, Tv, Phone, Activity as ActivityIcon, Bot, User as UserIcon,
-  Sun, Moon, LogOut, Lock, Search, Clock, AlertTriangle, Inbox, Timer,
+  Sun, Moon, LogOut, Search, Clock, AlertTriangle, Inbox, Timer,
   LayoutDashboard, Headset, SlidersHorizontal, Save, BarChart3,
   Star, ScrollText, ShieldAlert, EyeOff, Zap, RotateCcw,
 } from 'lucide-react';
@@ -84,55 +84,15 @@ type AdminTab = 'dashboard' | 'console' | 'incidentes';
 export function AdminPanel({ onExit }: Props) {
   const { adminRole } = useClaroContext();
   const [tab, setTab] = useState<AdminTab>(adminRole === 'gerente' ? 'dashboard' : 'console');
-  if (!adminRole) return <AdminGate onExit={onExit} />;
+  /* Sem papel de admin (ex.: acabou de deslogar): a rota /admin já redireciona
+   * para /login — aqui só evita renderizar o console sem permissão. */
+  if (!adminRole) return null;
   return (
     <div className="h-screen flex flex-col bg-warm-100 dark:bg-warm-900 text-warm-900 dark:text-warm-50">
       <AdminTopBar onExit={onExit} tab={tab} onTab={(t) => setTab(t as AdminTab)} role={adminRole} />
       {tab === 'dashboard' && adminRole === 'gerente' && <ManagerDashboard />}
       {tab === 'console' && <AdminConsole onExit={onExit} embedded />}
       {tab === 'incidentes' && <IncidentsPanel />}
-    </div>
-  );
-}
-
-/* ─── GATE RBAC ──────────────────────────────────────────────────────────── */
-function AdminGate({ onExit }: Props) {
-  const { adminLogin } = useClaroContext();
-  const [email, setEmail] = useState(''); const [pwd, setPwd] = useState(''); const [err, setErr] = useState(false);
-  const submit = (e: React.FormEvent) => { e.preventDefault(); if (!adminLogin(email, pwd)) setErr(true); };
-  return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-warm-900 relative overflow-hidden">
-      <div className="absolute -top-40 -right-40 w-[32rem] h-[32rem] rounded-full bg-claro/20 blur-3xl" />
-      <div className="absolute -bottom-40 -left-40 w-[28rem] h-[28rem] rounded-full bg-claro/10 blur-3xl" />
-      <div className="relative w-full max-w-md">
-        <div className="flex items-center gap-3 mb-8 justify-center">
-          <Image src="/logo-texto-branco.png" alt="Claro" width={90} height={32} className="h-7 w-auto object-contain" />
-          <span className="text-white/30 text-xl font-thin">×</span>
-          <span className="text-sm font-black uppercase tracking-[0.18em] bg-white/10 text-white rounded-full px-3 py-1.5">One Hub Admin</span>
-        </div>
-        <div className="bg-white dark:bg-warm-800 rounded-3xl shadow-2xl p-8">
-          <div className="w-12 h-12 rounded-2xl bg-claro-soft dark:bg-claro/15 flex items-center justify-center mb-5"><Lock size={20} className="text-claro" /></div>
-          <h1 className="text-2xl font-black tracking-tight">Acesso restrito · RBAC</h1>
-          <p className="text-sm text-warm-500 mt-1 mb-6">Console com controle de acesso por papel. Suas permissões dependem do perfil.</p>
-          <form onSubmit={submit} className="space-y-3">
-            <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(false); }} placeholder="E-mail corporativo" className="w-full bg-warm-100 dark:bg-warm-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-claro/40" />
-            <input type="password" value={pwd} onChange={(e) => { setPwd(e.target.value); setErr(false); }} placeholder="Senha" className="w-full bg-warm-100 dark:bg-warm-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-claro/40" />
-            {err && <p className="text-[12px] text-claro font-bold flex items-center gap-1.5"><AlertTriangle size={13} /> Credenciais inválidas ou sem permissão.</p>}
-            <button type="submit" className="w-full bg-claro text-white font-bold rounded-xl py-3 text-sm hover:bg-claro-dark transition-colors">Entrar no console</button>
-          </form>
-          <div className="mt-5 grid grid-cols-2 gap-2 text-[11px]">
-            <div className="p-3 rounded-xl bg-warm-50 dark:bg-warm-700/40">
-              <p className="font-bold text-warm-600 dark:text-warm-300 flex items-center gap-1.5 mb-1"><Headset size={12} /> Atendente</p>
-              <p className="text-warm-500 leading-tight">atendente@claro.com.br</p><p className="text-warm-500">senha <span className="font-mono font-bold">admin</span></p>
-            </div>
-            <div className="p-3 rounded-xl bg-warm-50 dark:bg-warm-700/40">
-              <p className="font-bold text-warm-600 dark:text-warm-300 flex items-center gap-1.5 mb-1"><LayoutDashboard size={12} /> Gerente</p>
-              <p className="text-warm-500 leading-tight">gerente@claro.com.br</p><p className="text-warm-500">senha <span className="font-mono font-bold">gerente</span></p>
-            </div>
-          </div>
-          <button onClick={onExit} className="w-full mt-4 text-xs font-bold text-warm-500 hover:text-warm-900 dark:hover:text-warm-50 flex items-center justify-center gap-1.5"><ArrowLeft size={13} /> Voltar ao Hub do cliente</button>
-        </div>
-      </div>
     </div>
   );
 }

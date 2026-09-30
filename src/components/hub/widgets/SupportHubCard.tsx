@@ -22,7 +22,7 @@ export function SupportHubCard({ onOpenAtendimento }: { onOpenAtendimento: () =>
   const ticketOpen = myTicket && myTicket.status !== 'resolvido';
 
   return (
-    <section className="bg-warm-900 dark:bg-warm-800 text-white rounded-3xl p-6 lg:p-7 relative overflow-hidden">
+    <section className="h-full flex flex-col justify-center bg-warm-900 dark:bg-warm-800 text-white rounded-3xl p-6 lg:p-7 relative overflow-hidden">
       <div className="absolute -top-16 -right-16 w-52 h-52 rounded-full bg-claro/30 blur-3xl pointer-events-none" />
 
       <div className="relative flex items-start justify-between gap-4 mb-5">

@@ -8,11 +8,10 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useClaroContext } from '../../../context/ClaroContext';
-import { channelsUsed, CANAL_LABEL } from '../../../services/session';
+import { channelsUsed, sessionProtocol, CANAL_LABEL } from '../../../services/session';
 import { intentLabel } from '../../../services/claraNlu';
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
-const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -30,8 +29,9 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
 export function SettingsPage() {
   const {
     user, activeUser, accounts, switchAccount, dark, toggleDark,
-    session, sessionTokenPayload, sessionSecondsLeft,
+    session,
     claraConsent, revokeClaraConsent, exportMyData, deleteMyConversations,
+    mfaEnabled, setMfaEnabled,
   } = useClaroContext();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleted, setDeleted] = useState(false);
@@ -128,7 +128,7 @@ export function SettingsPage() {
           <div>
             <p className="text-sm font-black">Sessão e segurança</p>
             <p className="text-[11px] text-warm-500">
-              Token JWT · continuidade de contexto vinculada ao cliente, não ao canal
+              Sua conversa continua de onde parou, em qualquer canal — sem repetir nada
             </p>
           </div>
         </div>
@@ -137,23 +137,17 @@ export function SettingsPage() {
           <>
             <div className="grid sm:grid-cols-2 gap-3 text-[12px]">
               <div className="bg-warm-50 dark:bg-warm-700/40 rounded-xl p-3">
-                <p className="text-warm-400 text-[10px] uppercase tracking-wider font-bold">session_id</p>
-                <p className="font-mono font-bold break-all">{session.sessionId}</p>
+                <p className="text-warm-400 text-[10px] uppercase tracking-wider font-bold">nº de protocolo</p>
+                <p className="font-mono font-bold">{sessionProtocol(session)}</p>
               </div>
               <div className="bg-warm-50 dark:bg-warm-700/40 rounded-xl p-3">
                 <p className="text-warm-400 text-[10px] uppercase tracking-wider font-bold">canal de origem</p>
                 <p className="font-bold">{CANAL_LABEL[session.canalOrigem]}</p>
               </div>
-              <div className="bg-warm-50 dark:bg-warm-700/40 rounded-xl p-3">
-                <p className="text-warm-400 text-[10px] uppercase tracking-wider font-bold">contexto atual</p>
+              <div className="bg-warm-50 dark:bg-warm-700/40 rounded-xl p-3 sm:col-span-2">
+                <p className="text-warm-400 text-[10px] uppercase tracking-wider font-bold">etapa / contexto atual</p>
                 <p className="font-bold">
                   {session.contextoAtual.lastIntent ? intentLabel(session.contextoAtual.lastIntent) : '—'}
-                </p>
-              </div>
-              <div className="bg-warm-50 dark:bg-warm-700/40 rounded-xl p-3">
-                <p className="text-warm-400 text-[10px] uppercase tracking-wider font-bold">token expira em</p>
-                <p className={cx('font-bold tabular-nums', sessionSecondsLeft < 300 && 'text-claro')}>
-                  {mmss(sessionSecondsLeft)} {sessionTokenPayload && `· canal ${sessionTokenPayload.canal}`}
                 </p>
               </div>
             </div>
@@ -282,14 +276,23 @@ export function SettingsPage() {
           {saved === 'senha' && <SavedTag />}
         </SettingRow>
 
-        {/* 2FA */}
-        <SettingRow id="2fa" icon={ShieldCheck} label="Autenticação em 2 fatores" desc={`${[twoFA.sms && 'SMS', twoFA.email && 'E-mail', twoFA.app && 'App'].filter(Boolean).join(' + ') || 'Desativado'}`} open={openRow === '2fa'} onToggle={() => toggleRow('2fa')}>
-          {([['sms', Smartphone, 'Código por SMS'], ['email', Mail, 'Código por e-mail'], ['app', KeyRound, 'App autenticador (TOTP)']] as const).map(([k, Ic, txt]) => (
-            <div key={k} className="flex items-center justify-between py-2">
-              <span className="text-[12px] font-bold flex items-center gap-2"><Ic size={15} className="text-warm-500" /> {txt}</span>
-              <Toggle on={twoFA[k]} onClick={() => { setTwoFA((s) => ({ ...s, [k]: !s[k] })); flashSaved('2fa'); }} />
-            </div>
-          ))}
+        {/* 2FA / MFA */}
+        <SettingRow id="2fa" icon={ShieldCheck} label="Autenticação em 2 fatores (MFA)" desc={mfaEnabled ? 'Ativa · exigida em todo login da plataforma' : 'Desativada'} open={openRow === '2fa'} onToggle={() => toggleRow('2fa')}>
+          <div className="flex items-center justify-between py-2 border-b border-warm-100 dark:border-warm-700 mb-1">
+            <span className="text-[12px] font-bold flex items-center gap-2"><ShieldCheck size={15} className="text-claro" /> Exigir código de verificação (simulado) no login</span>
+            <Toggle on={mfaEnabled} onClick={() => { setMfaEnabled(!mfaEnabled); flashSaved('2fa'); }} />
+          </div>
+          <p className="text-[11px] text-warm-500 pb-2">
+            Protótipo · vale para o seu login como cliente e para os logins de atendente/gerente no console admin.
+          </p>
+          <div className={cx('space-y-0.5', !mfaEnabled && 'opacity-40 pointer-events-none')}>
+            {([['sms', Smartphone, 'Código por SMS'], ['email', Mail, 'Código por e-mail'], ['app', KeyRound, 'App autenticador (TOTP)']] as const).map(([k, Ic, txt]) => (
+              <div key={k} className="flex items-center justify-between py-2">
+                <span className="text-[12px] font-bold flex items-center gap-2"><Ic size={15} className="text-warm-500" /> {txt}</span>
+                <Toggle on={twoFA[k]} onClick={() => { setTwoFA((s) => ({ ...s, [k]: !s[k] })); flashSaved('2fa'); }} />
+              </div>
+            ))}
+          </div>
           {saved === '2fa' && <SavedTag />}
         </SettingRow>
 

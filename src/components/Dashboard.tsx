@@ -1,15 +1,13 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { X, Award, ArrowRight } from 'lucide-react';
 import { HubSidebar, type SectionId } from './hub/HubSidebar';
 import { HubTopBar } from './hub/HubTopBar';
-import { NetworkStatusBanner } from './site/NetworkStatusBanner';
 import { HeroBill } from './hub/widgets/HeroBill';
 import { QuickActions } from './hub/widgets/QuickActions';
 import { ServicesPanel } from './hub/widgets/ServicesPanel';
 import { UsageInsights } from './hub/widgets/UsageInsights';
-import { ClubeWidget } from './hub/widgets/ClubeWidget';
 import { ActivityFeed } from './hub/widgets/ActivityFeed';
 import { Recommendations } from './hub/widgets/Recommendations';
 import { UpgradeCTA } from './hub/widgets/UpgradeCTA';
@@ -93,7 +91,6 @@ const SERVICE_DETAIL_KEYS: SectionId[] = ['mobile', 'internet', 'tv', 'voice'];
 export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [active, setActive]         = useState<SectionId>('overview');
   const [mobileNav, setMobileNav]   = useState(false);
-  const [bannerOpen, setBannerOpen] = useState(true);
   const [payInv, setPayInv]         = useState<Invoice | null>(null);
   const [redeem, setRedeem]         = useState<ClubeReward | null>(null);
   const [tourOpen, setTourOpen]     = useState(false);
@@ -205,22 +202,23 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           />
         )}
         <div className="grid lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-7">
+          <div className="lg:col-span-4">
             <QuickActions onNav={handleNav} onPay={() => handlePay()} />
           </div>
-          <div className="lg:col-span-5">
+          <div className="lg:col-span-8">
             <SupportHubCard onOpenAtendimento={() => handleNav('atendimento')} />
           </div>
         </div>
         <div className="grid lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-7">
             <ServicesPanel services={services} onOpen={handleNav} onAddPlan={() => handleAddPlan()} />
-            <UsageInsights data={dataHistory} />
           </div>
-          <div className="lg:col-span-5 space-y-6">
-            {clube && <ClubeWidget clube={clube} onRedeem={handleRedeem} />}
+          <div className="lg:col-span-5">
             <ActivityFeed items={activity.slice(0, 5)} />
           </div>
+        </div>
+        <div className="max-w-3xl mx-auto w-full">
+          <UsageInsights data={dataHistory} />
         </div>
         <UpgradeCTA />
         <Recommendations items={recommendations} onAdd={(slug) => handleAddPlan(slug)} />
@@ -284,9 +282,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           onAskClara={handleAskClara}
         />
 
-        {bannerOpen && (
-          <NetworkStatusBanner onDismiss={() => setBannerOpen(false)} />
-        )}
         {convBannerOpen && active !== 'atendimento' && (
           <ActiveConversationBanner
             onDismiss={() => setConvBannerOpen(false)}
@@ -297,18 +292,38 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
         <main id="conteudo-hub" className="px-6 lg:px-10 py-8 lg:py-10 max-w-[1400px] mx-auto">
           {/* Page greeting */}
-          <div className="mb-6">
-            <p className="text-[10px] font-bold text-warm-400 uppercase tracking-[0.22em] mb-1">
-              {new Date().toLocaleDateString('pt-BR', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-              })}
-            </p>
-            {active === 'overview' && !loading && displayUser && (
-              <h1 className="text-3xl lg:text-4xl font-black tracking-tight">
-                Olá, {displayUser.name.split(' ')[0]}
-              </h1>
+          <div className="mb-6 flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-[10px] font-bold text-warm-400 uppercase tracking-[0.22em] mb-1">
+                {new Date().toLocaleDateString('pt-BR', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                })}
+              </p>
+              {active === 'overview' && !loading && displayUser && (
+                <h1 className="text-3xl lg:text-4xl font-black tracking-tight">
+                  Olá, {displayUser.name.split(' ')[0]}
+                </h1>
+              )}
+            </div>
+            {active === 'overview' && !loading && clube && (
+              <button
+                onClick={() => handleNav('clube')}
+                data-tour="clube"
+                className="group flex items-center gap-3 bg-white dark:bg-warm-800 border border-amber-200/70 dark:border-warm-700 hover:border-amber-400 rounded-2xl pl-3 pr-4 py-2 transition-colors shrink-0"
+              >
+                <span className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
+                  <Award size={17} className="text-amber-600 dark:text-amber-400" />
+                </span>
+                <span className="text-left leading-tight">
+                  <span className="block text-[9px] font-bold text-warm-400 uppercase tracking-wider">Claro Clube</span>
+                  <span className="block text-base font-black tracking-tight tabular-nums">
+                    {clube.points.toLocaleString('pt-BR')} <span className="text-[10px] font-bold text-warm-500">pts</span>
+                  </span>
+                </span>
+                <ArrowRight size={14} className="text-warm-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+              </button>
             )}
           </div>
 

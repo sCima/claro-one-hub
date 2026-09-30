@@ -15,7 +15,7 @@ import {
   CheckCircle2, Clock, UserCheck, Bot, Star, RotateCcw, ShieldCheck,
 } from 'lucide-react';
 import { useClaroContext } from '../../../context/ClaroContext';
-import { channelsUsed, CANAL_LABEL, type Canal } from '../../../services/session';
+import { channelsUsed, sessionProtocol, CANAL_LABEL, type Canal } from '../../../services/session';
 import { intentLabel } from '../../../services/claraNlu';
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
@@ -133,7 +133,14 @@ export function AtendimentoPage() {
       <section className="bg-white dark:bg-warm-800 border border-warm-200/70 dark:border-warm-700 rounded-3xl overflow-hidden">
         <div className="px-6 py-4 border-b border-warm-100 dark:border-warm-700 flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <p className="text-sm font-black flex items-center gap-2"><Sparkles size={15} className="text-claro" /> Sua conversa</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-black flex items-center gap-2"><Sparkles size={15} className="text-claro" /> Sua conversa</p>
+              {session && (
+                <span className="text-[10px] font-mono font-bold text-warm-500 bg-warm-100 dark:bg-warm-700 rounded-full px-2.5 py-1">
+                  Protocolo {sessionProtocol(session)}
+                </span>
+              )}
+            </div>
             {hasConversation && session && (
               <p className="text-[11px] text-warm-500 mt-0.5">
                 {canais.map((c, i) => (

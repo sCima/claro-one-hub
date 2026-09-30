@@ -4,10 +4,23 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Menu, Search, Sun, Moon, Bell, ChevronDown, Plus, LogOut, X, ShieldCheck, MessageSquare, Smartphone,
+  AlertOctagon, AlertTriangle, Info, Clock, MapPin, Wifi, Tv, Phone,
 } from 'lucide-react';
 import { useClaroContext } from '../../context/ClaroContext';
 import { SearchResults } from './widgets/SearchResults';
+import { INCIDENT_SERVICO_LABEL, type IncidentServico, type IncidentSeverity } from '../../data/mockData';
 import type { SectionId } from './HubSidebar';
+
+const SEVERITY_ORDER = { critico: 0, alto: 1, moderado: 2, informativo: 3 } as const;
+const SEVERITY_ICON: Record<IncidentSeverity, typeof AlertTriangle> = {
+  critico: AlertOctagon, alto: AlertTriangle, moderado: AlertTriangle, informativo: Info,
+};
+const SEVERITY_DOT: Record<IncidentSeverity, string> = {
+  critico: 'bg-claro', alto: 'bg-amber-500', moderado: 'bg-amber-300', informativo: 'bg-blue-400',
+};
+const SERVICO_ICON: Record<IncidentServico, typeof Wifi> = {
+  internet: Wifi, tv: Tv, telefonia: Phone, movel: Smartphone,
+};
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
 
@@ -20,7 +33,7 @@ interface Props {
 
 export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }: Props) {
   const {
-    activeUser, user, accounts, notifications, dark,
+    activeUser, user, accounts, notifications, dark, activeIncidents,
     services, invoices, clube,
     searchQuery, switchAccount, toggleDark, setSearchQuery,
     markNotificationRead, markAllNotificationsRead,
@@ -29,13 +42,17 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
   const [searchFocus, setSearchFocus] = useState(false);
   const router = useRouter();
 
-  const [notifOpen,   setNotifOpen]   = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [acctOpen,    setAcctOpen]    = useState(false);
+  const [notifOpen,     setNotifOpen]     = useState(false);
+  const [profileOpen,   setProfileOpen]   = useState(false);
+  const [acctOpen,      setAcctOpen]      = useState(false);
+  const [incidentsOpen, setIncidentsOpen] = useState(false);
+  const [openIncidentId, setOpenIncidentId] = useState<string | null>(null);
 
   const wrapRef = useRef<HTMLElement>(null);
   const unread  = notifications.filter((n) => n.unread).length;
   const active  = accounts.find((a) => a.active) ?? accounts[0];
+  const sortedIncidents = [...activeIncidents].sort((a, b) => SEVERITY_ORDER[a.severidade] - SEVERITY_ORDER[b.severidade]);
+  const worstSeverity = sortedIncidents[0]?.severidade;
 
   /* Close all dropdowns on outside click */
   useEffect(() => {
@@ -44,6 +61,7 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
         setNotifOpen(false);
         setProfileOpen(false);
         setAcctOpen(false);
+        setIncidentsOpen(false);
         setSearchFocus(false);
       }
     };
@@ -187,6 +205,72 @@ export function HubTopBar({ onLogout, onOpenMobileNav, onNavigate, onAskClara }:
           : <Moon size={18} />
         }
       </button>
+
+      {/* Incidentes técnicos ativos (RF006) — colapsado num ícone, como o painel de notificações */}
+      {activeIncidents.length > 0 && (
+        <div className="relative" data-tour="incidents">
+          <button
+            onClick={() => { setIncidentsOpen((v) => !v); setNotifOpen(false); setProfileOpen(false); setAcctOpen(false); }}
+            className="relative w-10 h-10 rounded-full hover:bg-warm-100 dark:hover:bg-warm-700 flex items-center justify-center"
+            aria-label="Avisos de incidentes técnicos"
+          >
+            <AlertTriangle size={18} className={worstSeverity === 'critico' ? 'text-claro' : 'text-amber-500'} />
+            <span className={cx(
+              'absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-black text-white flex items-center justify-center ring-2 ring-white dark:ring-warm-800',
+              worstSeverity === 'critico' ? 'bg-claro' : 'bg-amber-500',
+            )}>
+              {activeIncidents.length}
+            </span>
+          </button>
+
+          {incidentsOpen && (
+            <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-warm-800 border border-warm-200/70 dark:border-warm-700 rounded-2xl shadow-2xl overflow-hidden anim-in">
+              <div className="px-5 py-4 border-b border-warm-100 dark:border-warm-700">
+                <p className="text-sm font-bold">Incidentes na sua região</p>
+                <p className="text-[10px] text-warm-400 mt-0.5">Notificação automática da equipe técnica (RF006)</p>
+              </div>
+              <ul className="max-h-96 overflow-y-auto">
+                {sortedIncidents.map((inc) => {
+                  const Icon = SEVERITY_ICON[inc.severidade];
+                  const expanded = openIncidentId === inc.id;
+                  return (
+                    <li key={inc.id} className="border-b border-warm-100 dark:border-warm-700 last:border-0">
+                      <button
+                        onClick={() => setOpenIncidentId(expanded ? null : inc.id)}
+                        className="w-full flex items-start gap-3 px-5 py-3.5 text-left hover:bg-warm-50 dark:hover:bg-warm-700"
+                      >
+                        <span className={cx('mt-0.5 w-2 h-2 rounded-full shrink-0', SEVERITY_DOT[inc.severidade])} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-warm-800 dark:text-warm-100 leading-snug">{inc.titulo}</p>
+                          <p className="text-[10px] text-warm-500 mt-1 flex items-center gap-1"><Clock size={10} /> {inc.previsao}</p>
+                        </div>
+                        <Icon size={14} className={cx('shrink-0 mt-0.5', inc.severidade === 'critico' ? 'text-claro' : inc.severidade === 'informativo' ? 'text-blue-400' : 'text-amber-500')} />
+                      </button>
+                      {expanded && (
+                        <div className="px-5 pb-3.5 -mt-1 anim-in">
+                          <p className="text-[11px] text-warm-500 leading-relaxed">{inc.descricao}</p>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                            {inc.servicos.map((s) => {
+                              const SIcon = SERVICO_ICON[s];
+                              return (
+                                <span key={s} className="inline-flex items-center gap-1 text-[10px] font-bold bg-warm-100 dark:bg-warm-700 rounded-full px-2 py-0.5">
+                                  <SIcon size={10} /> {INCIDENT_SERVICO_LABEL[s]}
+                                </span>
+                              );
+                            })}
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-warm-500"><MapPin size={10} /> {inc.regiao}</span>
+                          </div>
+                          <p className="text-[9px] text-warm-400 mt-2">Protocolo {inc.id} · aberto por {inc.abertoPor}</p>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Notifications */}
       <div className="relative" data-tour="notifications">

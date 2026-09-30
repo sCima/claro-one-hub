@@ -131,6 +131,9 @@ interface ClaroState {
   auditLog: AuditEntry[];
   anonymizeTicket: (id: string) => void;
   deanonymizeTicket: (id: string) => void;
+  /* ─── MFA mockado · exigido em todo login da plataforma (cliente/atendente/gerente) ─── */
+  mfaEnabled: boolean;
+  setMfaEnabled: (v: boolean) => void;
 }
 
 const ClaroContext = createContext<ClaroState | null>(null);
@@ -196,6 +199,7 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
   const [adminRole, setAdminRole]         = useState<AdminRole | null>(null);
   const [adminName, setAdminName]         = useState<string | null>(null);
   const [adminAuthResolved, setAdminAuthResolved] = useState(false);
+  const [mfaEnabled, setMfaEnabledState]  = useState(false);
   const [slaConfig, setSlaConfig]         = useState<Record<AdminPriority, number>>({ ...SLA_TARGET });
   const [auditLog, setAuditLog]           = useState<AuditEntry[]>([]);
   /* pontos do Clube por conta (base = accountProfiles, ajustado por pagamento/resgate) */
@@ -798,6 +802,20 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
     try { window.localStorage.removeItem(ADMIN_KEY); } catch {}
   }, []);
 
+  /* ─── MFA mockado · liga/desliga vale para cliente e admin, independente de sessão ─── */
+  const MFA_KEY = 'onehub.mfaEnabled';
+
+  useEffect(() => {
+    try {
+      setMfaEnabledState(window.localStorage.getItem(MFA_KEY) === 'true');
+    } catch {}
+  }, []);
+
+  const setMfaEnabled = useCallback((v: boolean) => {
+    setMfaEnabledState(v);
+    try { window.localStorage.setItem(MFA_KEY, String(v)); } catch {}
+  }, []);
+
   const updateSlaConfig = useCallback((priority: AdminPriority, minutes: number) => {
     const v = Math.max(1, Math.round(minutes));
     setSlaConfig((prev) => ({ ...prev, [priority]: v }));
@@ -823,6 +841,7 @@ export function ClaroProvider({ children }: { children: ReactNode }) {
       adminRole, adminName, adminAuthResolved, adminLogin, adminLogout,
       slaConfig, updateSlaConfig,
       auditLog, anonymizeTicket, deanonymizeTicket,
+      mfaEnabled, setMfaEnabled,
     }}>
       {children}
     </ClaroContext.Provider>

@@ -108,6 +108,22 @@ export function channelsUsed(session: Session): Canal[] {
   return [...set];
 }
 
+/**
+ * Número de protocolo amigável da conversa — o cliente pode citá-lo em
+ * qualquer canal sem precisar entender o que é um session_id técnico.
+ * Derivado de forma estável a partir do sessionId (mesmo protocolo sempre
+ * que a sessão for recarregada).
+ */
+export function sessionProtocol(session: Session): string {
+  let hash = 0;
+  for (let i = 0; i < session.sessionId.length; i++) {
+    hash = (hash * 31 + session.sessionId.charCodeAt(i)) >>> 0;
+  }
+  const code = String(hash % 1_000_000).padStart(6, '0');
+  const year = new Date(session.createdAt).getFullYear();
+  return `AT-${year}-${code}`;
+}
+
 /* ─── persistência ─────────────────────────────────────────────────────────── */
 
 const KEY = backendConfig.session.localStorageKey;

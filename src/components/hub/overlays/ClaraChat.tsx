@@ -10,7 +10,7 @@ import type { Service, Invoice, ClubeData } from '../../../data/mockData';
 import { useClaroContext } from '../../../context/ClaroContext';
 import { detectIntent, intentLabel } from '../../../services/claraNlu';
 import { buildReply, replyActions, resumeLine, type ClaraContext as Ctx, type ClaraAction } from '../../../services/claraReply';
-import type { Canal } from '../../../services/session';
+import { sessionProtocol, type Canal } from '../../../services/session';
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
 
@@ -103,9 +103,10 @@ export function ClaraChat({
         return;
       }
 
+      const proto = sess ? ` Guarde o protocolo desta conversa: ${sessionProtocol(sess)}.` : '';
       const greet = incidentNote
-        ? `Olá, ${ctx.name}! Antes de mais nada: ${incidentNote} Posso ajudar em mais alguma coisa?`
-        : `Olá, ${ctx.name}! Eu sou a Clara, sua assistente Claro. Como posso te ajudar hoje?`;
+        ? `Olá, ${ctx.name}! Antes de mais nada: ${incidentNote} Posso ajudar em mais alguma coisa?${proto}`
+        : `Olá, ${ctx.name}! Eu sou a Clara, sua assistente Claro. Como posso te ajudar hoje?${proto}`;
       setMessages([{ id: 'm-init', role: 'clara', text: greet, ts: Date.now() }]);
       appendSessionMessage({ role: 'clara', text: greet, canal: CANAL });
     })();
@@ -213,6 +214,14 @@ export function ClaraChat({
           <p className="text-sm font-black leading-tight">Clara</p>
           <p className="text-[10px] opacity-80 leading-tight">Assistente IA · Online agora</p>
         </div>
+        {session && (
+          <span
+            className="text-[9px] font-mono font-bold bg-white/15 rounded-full px-2.5 py-1 shrink-0"
+            title="Número de protocolo desta conversa"
+          >
+            {sessionProtocol(session)}
+          </span>
+        )}
         <button
           onClick={onClose}
           className="w-8 h-8 rounded-full hover:bg-white/15 flex items-center justify-center transition-colors"

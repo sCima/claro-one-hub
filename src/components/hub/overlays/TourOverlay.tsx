@@ -16,11 +16,11 @@ interface Props {
 type Box = { top: number; left: number; width: number; height: number } | null;
 
 const steps = [
+  { sel: '[data-tour="clube"]',    title: 'Seus pontos, sempre à vista', body: 'Saldo do Claro Clube logo no topo, ao lado do seu nome. Toque para ver e resgatar prêmios.' },
   { sel: '[data-tour="bill"]',     title: 'Sua fatura, em destaque',   body: 'O cartão escuro mostra o valor em aberto e quanto falta para vencer. Pague em 1 toque por Pix.' },
   { sel: '[data-tour="quick"]',    title: 'Atalhos de 1 clique',        body: 'Recarga, fatura, novo serviço, suporte. As 4 ações mais usadas, sempre acessíveis.' },
   { sel: '[data-tour="services"]', title: 'Todos os seus serviços',     body: 'Cada cartão mostra plano, consumo e valor mensal. Toque para abrir os detalhes do serviço.' },
   { sel: '[data-tour="usage"]',    title: 'Insights de consumo',        body: 'Acompanhe celular e internet em tempo real. Alterne com os botões no topo do gráfico.' },
-  { sel: '[data-tour="clube"]',    title: 'Claro Clube integrado',      body: 'Veja seu saldo de pontos e resgate prêmios sem sair do hub.' },
   { sel: '[data-tour="switcher"]', title: 'Multiconta',                 body: 'Gerencie a conta da família, dos pais ou da empresa pelo mesmo login.' },
   { sel: '[data-tour="search"]',   title: 'Busca global',               body: 'Procure faturas, serviços, contatos do suporte ou recompensas. Use ⌘K para abrir.' },
 ];

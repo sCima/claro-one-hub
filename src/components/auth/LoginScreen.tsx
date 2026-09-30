@@ -20,9 +20,12 @@ import { mockUser, ADMIN_USERS } from '../../data/mockData';
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
 type Mode = 'cliente' | 'admin';
 
+/* Gera um código de 6 dígitos só para simular o envio do 2º fator */
+const genMfaCode = () => String(Math.floor(100000 + Math.random() * 900000));
+
 export function LoginScreen() {
   const router = useRouter();
-  const { login, adminLogin, isLoggedIn, authResolved, adminRole } = useClaroContext();
+  const { login, adminLogin, isLoggedIn, authResolved, adminRole, mfaEnabled } = useClaroContext();
   const [mode, setMode] = useState<Mode>('cliente');
 
   /* Já autenticado? Vai direto para o destino, sem mostrar o formulário. */
@@ -42,9 +45,20 @@ export function LoginScreen() {
   const [aPwd, setAPwd] = useState('');
   const [aErr, setAErr] = useState(false);
 
-  const submitCliente = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (busy || !cId.trim() || !cPwd.trim()) return;
+  /* ─── MFA mockado (2º fator) · exigido antes de concluir o login quando ativo
+   * nas configurações. Só entra em vigor depois que o 1º fator já foi validado. */
+  const [mfaStep, setMfaStep] = useState(false);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaInput, setMfaInput] = useState('');
+  const [mfaErr, setMfaErr] = useState(false);
+  const [pendingAdmin, setPendingAdmin] = useState<{ email: string; pwd: string } | null>(null);
+
+  const changeMode = (m: Mode) => {
+    setMode(m);
+    setMfaStep(false); setMfaInput(''); setMfaErr(false); setPendingAdmin(null);
+  };
+
+  const finishCliente = async () => {
     setBusy(true);
     try {
       await login();             // protótipo: aceita qualquer credencial
@@ -54,12 +68,45 @@ export function LoginScreen() {
     }
   };
 
+  const submitCliente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy || !cId.trim() || !cPwd.trim()) return;
+    if (mfaEnabled) {
+      setMfaCode(genMfaCode()); setMfaInput(''); setMfaErr(false); setMfaStep(true);
+      return;
+    }
+    await finishCliente();
+  };
+
   const submitAdmin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (mfaEnabled) {
+      const found = ADMIN_USERS.some(
+        (u) => u.email === aEmail.trim().toLowerCase() && u.password === aPwd
+      );
+      if (!found) { setAErr(true); return; }
+      setPendingAdmin({ email: aEmail, pwd: aPwd });
+      setMfaCode(genMfaCode()); setMfaInput(''); setMfaErr(false); setMfaStep(true);
+      return;
+    }
     const role = adminLogin(aEmail, aPwd);
     if (role) router.push('/admin');
     else setAErr(true);
   };
+
+  const confirmMfa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (mfaInput.trim() !== mfaCode) { setMfaErr(true); return; }
+    if (mode === 'cliente') {
+      await finishCliente();
+    } else if (pendingAdmin) {
+      const role = adminLogin(pendingAdmin.email, pendingAdmin.pwd);
+      if (role) router.push('/admin');
+    }
+  };
+
+  const resendMfa = () => { setMfaCode(genMfaCode()); setMfaInput(''); setMfaErr(false); };
+  const cancelMfa = () => { setMfaStep(false); setMfaInput(''); setMfaErr(false); setPendingAdmin(null); };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-warm-900 relative overflow-hidden">
@@ -77,24 +124,69 @@ export function LoginScreen() {
 
         <div className="bg-white dark:bg-warm-800 rounded-3xl shadow-2xl p-8">
           {/* Alternador Cliente / Administrador */}
-          <div className="flex bg-warm-100 dark:bg-warm-700 rounded-full p-1 text-[12px] font-bold mb-6">
-            <button
-              onClick={() => setMode('cliente')}
-              className={cx('flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full transition-colors',
-                mode === 'cliente' ? 'bg-white dark:bg-warm-800 text-warm-900 dark:text-warm-50 shadow-sm' : 'text-warm-500')}
-            >
-              <UserIcon size={13} /> Cliente
-            </button>
-            <button
-              onClick={() => setMode('admin')}
-              className={cx('flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full transition-colors',
-                mode === 'admin' ? 'bg-white dark:bg-warm-800 text-warm-900 dark:text-warm-50 shadow-sm' : 'text-warm-500')}
-            >
-              <ShieldCheck size={13} /> Administrador
-            </button>
-          </div>
+          {!mfaStep && (
+            <div className="flex bg-warm-100 dark:bg-warm-700 rounded-full p-1 text-[12px] font-bold mb-6">
+              <button
+                onClick={() => changeMode('cliente')}
+                className={cx('flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full transition-colors',
+                  mode === 'cliente' ? 'bg-white dark:bg-warm-800 text-warm-900 dark:text-warm-50 shadow-sm' : 'text-warm-500')}
+              >
+                <UserIcon size={13} /> Cliente
+              </button>
+              <button
+                onClick={() => changeMode('admin')}
+                className={cx('flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full transition-colors',
+                  mode === 'admin' ? 'bg-white dark:bg-warm-800 text-warm-900 dark:text-warm-50 shadow-sm' : 'text-warm-500')}
+              >
+                <ShieldCheck size={13} /> Administrador
+              </button>
+            </div>
+          )}
 
-          {mode === 'cliente' ? (
+          {mfaStep ? (
+            <>
+              <div className="w-12 h-12 rounded-2xl bg-claro-soft dark:bg-claro/15 flex items-center justify-center mb-5">
+                <ShieldCheck size={20} className="text-claro" />
+              </div>
+              <h1 className="text-2xl font-black tracking-tight">Verificação em duas etapas</h1>
+              <p className="text-sm text-warm-500 mt-1 mb-6">
+                Enviamos um código simulado para confirmar que é você.
+              </p>
+              <p className="mb-4 text-[12px] text-warm-500 bg-warm-50 dark:bg-warm-700/40 rounded-xl px-3.5 py-3">
+                MFA mockado (protótipo) · seu código é{' '}
+                <span className="font-mono font-black text-warm-900 dark:text-warm-50 tracking-[0.2em]">{mfaCode}</span>
+              </p>
+              <form onSubmit={confirmMfa} className="space-y-3">
+                <Field
+                  icon={ShieldCheck}
+                  type="text"
+                  value={mfaInput}
+                  onChange={(v) => { setMfaInput(v.replace(/\D/g, '').slice(0, 6)); setMfaErr(false); }}
+                  placeholder="Código de 6 dígitos"
+                />
+                {mfaErr && (
+                  <p className="text-[12px] text-claro font-bold flex items-center gap-1.5">
+                    <AlertTriangle size={13} /> Código incorreto. Confira e tente de novo.
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="w-full bg-claro text-white font-bold rounded-xl py-3 text-sm hover:bg-claro-dark transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+                >
+                  {busy ? <><Loader2 size={15} className="animate-spin" /> Verificando…</> : <>Confirmar <ArrowRight size={15} /></>}
+                </button>
+              </form>
+              <div className="mt-4 flex items-center justify-between text-[11px] font-bold">
+                <button onClick={cancelMfa} type="button" className="text-warm-500 hover:text-warm-900 dark:hover:text-warm-50 flex items-center gap-1.5">
+                  <ArrowLeft size={13} /> Voltar
+                </button>
+                <button onClick={resendMfa} type="button" className="text-claro hover:underline">
+                  Reenviar código
+                </button>
+              </div>
+            </>
+          ) : mode === 'cliente' ? (
             <>
               <div className="w-12 h-12 rounded-2xl bg-claro-soft dark:bg-claro/15 flex items-center justify-center mb-5">
                 <UserIcon size={20} className="text-claro" />

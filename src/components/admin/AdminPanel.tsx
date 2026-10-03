@@ -424,7 +424,7 @@ function AdminConsole({ onExit, embedded }: Props & { embedded?: boolean }) {
       </div>
 
       <div className="flex-1 grid lg:grid-cols-12 overflow-hidden">
-        <div className="lg:col-span-4 border-r border-warm-200/70 dark:border-warm-700 bg-white dark:bg-warm-800 overflow-y-auto">
+        <div className="lg:col-span-3 border-r border-warm-200/70 dark:border-warm-700 bg-white dark:bg-warm-800 overflow-y-auto">
           {filtered.length === 0 && <div className="p-10 text-center text-sm text-warm-500"><Inbox size={22} className="mx-auto mb-2 text-warm-400" /> Nenhum ticket com esses filtros.</div>}
           {filtered.map((q) => {
             const ch = CHANNEL[q.channel]; const ChIcon = ch.icon;
@@ -451,8 +451,8 @@ function AdminConsole({ onExit, embedded }: Props & { embedded?: boolean }) {
         </div>
 
         {selected ? (
-          <div className="lg:col-span-8 grid lg:grid-cols-8 overflow-hidden">
-            <div className="lg:col-span-5 flex flex-col overflow-hidden bg-warm-50 dark:bg-warm-900">
+          <div className="lg:col-span-9 grid lg:grid-cols-9 overflow-hidden">
+            <div className="lg:col-span-6 flex flex-col overflow-hidden bg-warm-50 dark:bg-warm-900">
               <div className="px-5 py-3 bg-white dark:bg-warm-800 border-b border-warm-200/70 dark:border-warm-700 flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-claro to-claro-dark text-white flex items-center justify-center text-[11px] font-black">{selected.initials}</div>
                 <div className="flex-1 min-w-0">
@@ -473,8 +473,8 @@ function AdminConsole({ onExit, embedded }: Props & { embedded?: boolean }) {
               <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                 <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-warm-400"><Sparkles size={12} className="text-claro" /> Diagnóstico automático · Clara<span className="flex-1 h-px bg-warm-200 dark:bg-warm-700" /></div>
                 {selected.claraHistory.map((msg, i) => (
-                  <div key={'cl-' + i} className={cx('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
-                    <div className={cx('max-w-[80%] px-3.5 py-2.5 text-[13px] leading-relaxed rounded-2xl', msg.role === 'user' ? 'bg-warm-200 dark:bg-warm-700 rounded-br-sm' : 'bg-claro-soft dark:bg-claro/10 border border-claro/20 rounded-bl-sm')}>
+                  <div key={'cl-' + i} className={cx('flex', msg.role === 'user' ? 'justify-start' : 'justify-end')}>
+                    <div className={cx('max-w-[80%] px-3.5 py-2.5 text-[13px] leading-relaxed rounded-2xl', msg.role === 'user' ? 'bg-warm-200 dark:bg-warm-700 rounded-bl-sm' : 'bg-claro-soft dark:bg-claro/10 border border-claro/20 rounded-br-sm')}>
                       {msg.role === 'clara' && <span className="flex items-center gap-1 text-[10px] font-bold text-claro mb-1"><Sparkles size={10} /> Clara</span>}
                       {msg.text}
                     </div>
@@ -576,7 +576,7 @@ function AdminConsole({ onExit, embedded }: Props & { embedded?: boolean }) {
             </aside>
           </div>
         ) : (
-          <div className="lg:col-span-8 flex flex-col items-center justify-center text-center p-8">
+          <div className="lg:col-span-9 flex flex-col items-center justify-center text-center p-8">
             <Inbox size={40} className="text-warm-400 mb-3" /><p className="text-lg font-black">Selecione um ticket</p><p className="text-sm text-warm-500 mt-1">Escolha um item da fila para ver o contexto completo.</p>
           </div>
         )}
